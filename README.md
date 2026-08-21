@@ -39,6 +39,63 @@
 
 系统覆盖从资产入库到领用、归还、调拨、报修、盘点的日常闭环，同时提供知识库、可选 AI 助手、安全中心和手机扫码入口。
 
+## 系统架构：稳定六层，业务模块可扩展
+
+<p align="center">
+  <img src="deploy/sample-picture/architecture-overview.svg" alt="资产管理系统可扩展六层架构图" width="100%">
+</p>
+
+这张图描述的是当前代码的真实边界，而不是限制以后只能做这些功能：
+
+- **第 1～4 层是稳定主干。** 用户入口、Vue 前端、FastAPI 接口和权限安全共同形成通用框架。
+- **第 5 层是主要扩展区。** 新的资产业务通常按“页面 + API + Schema + Service/Controller + Model + Test”进入这一层。
+- **第 6 层隔离数据与外部能力。** 业务数据、知识库、附件和可选模型服务各有明确入口，不把第三方配置写进业务页面。
+- 架构图本身只用于说明项目，不参与编译和运行；以后增加功能时，按真实实现补充模块名称即可。
+
+### 一次业务请求怎样走完？
+
+以员工提交资产调拨为例，请求会依次经过：
+
+1. **页面交互：** `web/src/views/business/` 收集表单，前端 API 封装通过 Axios 发出请求。
+2. **路由与校验：** `app/api/v1/` 匹配领域路由，Pydantic Schema 校验输入字段和格式。
+3. **身份与范围：** 依赖和中间件验证登录会话、角色/API 权限、部门或本人数据范围；高风险操作按策略增加 TOTP 或 Step-up Token。
+4. **业务规则：** Controller / Service 判断资产状态、申请人范围和流程条件，再调用数据模型完成变更。
+5. **持久化与留痕：** Tortoise ORM 写入业务 SQLite；审计日志、通知或安全事件按对应规则记录。
+6. **统一响应：** FastAPI 返回结构化结果，前端刷新列表并用中文消息提示成功或具体错误。
+
+前端隐藏按钮只是第一层体验控制，真正的数据范围和操作权限仍由后端再次判断。
+
+### 技术栈与职责
+
+| 层次 | 当前技术 | 在项目中负责什么 |
+| --- | --- | --- |
+| 页面与交互 | Vue 3、Vite、Naive UI、Vue Router、Pinia | 页面、导航、角色入口、表单表格和前端状态 |
+| HTTP 通信 | Axios、统一 API 封装 | 附带登录令牌、发送请求、处理统一响应与错误 |
+| Web API | FastAPI、Pydantic | 路由、依赖注入、输入校验和响应结构 |
+| 权限与安全 | JWT、RBAC、数据范围、TOTP、Step-up、中间件 | 登录、角色/API 权限、部门隔离、高风险操作验证、限流和审计 |
+| 业务实现 | Controller、Service、Tortoise Model | 资产流程、审批规则、统计、通知、知识库及安全运营 |
+| 数据与迁移 | SQLite、Tortoise ORM、Aerich、独立 RAG Store | 业务数据、迁移、知识库文档与检索索引 |
+| 运行与部署 | Uvicorn、可选 Nginx、Docker / 原生模板 | 启动 API、托管前端、反向代理、备份与部署参考 |
+
+### 当前模块边界
+
+| 模块组 | 当前包含 | 代码入口 |
+| --- | --- | --- |
+| 组织与权限 | 用户、角色、菜单、API、部门、员工与账号绑定 | `app/models/admin.py`、`app/api/v1/users/`、`roles/`、`depts/`、`employees/` |
+| 资产主数据 | 资产台账、状态、分类、位置、质保和二维码 | `app/models/business.py`、`app/api/v1/assets/`、`web/src/views/business/asset/` |
+| 资产流程 | 领用归还、审批、调拨、报修和盘点 | `app/api/v1/asset_uses/`、`asset_transfers/`、`asset_repairs/`、`inventorys/` |
+| 运营辅助 | 工作台、统计看板、通知、质保提醒、导入导出 | `app/services/dashboard_service.py`、`notification_service.py`、`warranty.py`、`export_service.py` |
+| 知识与 AI | 本地知识库、词面/RAG 检索、引用回答、可选模型适配 | `app/services/rag_service.py`、`rag_store.py`、`ai_service.py`、`app/api/v1/ai/` |
+| 安全运营 | 登录事件、风险聚合、查询筛选、验证策略和审计 | `app/api/v1/security/`、`app/services/security_agg.py`、`security_query.py` |
+
+### 数据保存在哪里？
+
+- `db/db.sqlite3`：运行时业务数据库，由 Tortoise ORM 访问；数据库文件不进入 Git。
+- `db/rag.sqlite3`：知识库文档和检索分块的独立存储；同样属于运行时文件。
+- 员工附件和上传内容：保存在运行时目录，通过登录与权限校验后的接口读取。
+- 模型服务：属于可选外部能力，只在运行时填写自己的服务地址、模型和密钥，仓库不预置凭据。
+- `migrations/` 与 `deploy/native/backup_sqlite_daily.sh`：分别负责结构迁移记录和本地数据库快照参考。
+
 ## 第一次打开后，建议这样使用
 
 1. 管理员先建立部门和员工档案，并为员工绑定登录账号。
@@ -266,10 +323,42 @@ python deploy/init_oss_demo_data.py --db db/db.sqlite3
 ## 项目目录
 
 ```text
-app/        FastAPI 后端与业务服务
-web/        Vue 3 前端
-deploy/     部署模板、演示脚本、测试与截图
-migrations/ 数据库迁移
+app/
+├─ api/v1/          FastAPI 领域路由：资产、员工、流程、知识库、安全等
+├─ controllers/     通用查询与管理控制器
+├─ core/            应用初始化、中间件、认证、权限、异常与网关控制
+├─ models/          Tortoise ORM 数据模型
+├─ schemas/         Pydantic 输入输出模型
+├─ services/        看板、通知、质保、RAG、AI、安全和导入导出服务
+├─ settings/        环境变量与 ORM 配置
+└─ utils/           网络、地理、风险、时间等通用工具
+
+web/src/
+├─ api/             与后端路由对应的请求封装
+├─ views/business/  资产、员工、审批、调拨、报修、盘点等业务页面
+├─ router/          路由定义与动态导航
+├─ store/           Pinia 登录、权限和应用状态
+├─ components/      可复用组件
+└─ composables/     页面共享逻辑与操作验证封装
+
+deploy/
+├─ data/            可公开的知识库初始化语料
+├─ native/          原生部署、反向代理与备份模板
+├─ tests/           Python 单元测试与前端契约测试
+├─ tools/           发布前检查和辅助工具
+└─ sample-picture/  README 图片与架构图
+
+migrations/         Aerich 数据库迁移
+run.py              Uvicorn 启动入口
 ```
+
+### 建议的代码阅读顺序
+
+1. 从 `run.py`、`app/__init__.py` 和 `app/core/init_app.py` 看应用如何启动、挂载中间件和注册路由。
+2. 从 `app/api/v1/__init__.py` 看所有 API 领域，再进入一个具体模块跟踪请求。
+3. 对照 `app/models/business.py` 与 `app/schemas/` 理解数据模型和接口字段。
+4. 在 `app/services/` 查看跨接口复用的业务能力，例如看板、通知、质保和知识库。
+5. 对照 `web/src/api/` 与 `web/src/views/business/` 查看前端怎样调用接口并呈现流程。
+6. 最后运行 `deploy/tests/`，用现有测试确认理解和扩展没有改变既定边界。
 
 第三方组件与许可证说明见 [`NOTICE`](./NOTICE)。
