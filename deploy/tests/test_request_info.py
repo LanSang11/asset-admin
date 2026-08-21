@@ -24,7 +24,8 @@ class RequestInfoTests(unittest.TestCase):
         self.assertTrue(is_unusable_client_ip("192.0.2.1"))
         self.assertTrue(is_unusable_client_ip("unknown"))
         self.assertTrue(is_unusable_client_ip(""))
-        self.assertFalse(is_unusable_client_ip("203.0.113.1"))
+        self.assertTrue(is_unusable_client_ip("203.0.113.1"))
+        self.assertFalse(is_unusable_client_ip("8.8.8.8"))
         self.assertFalse(is_unusable_client_ip("127.0.0.1"))
 
     def test_xff_prefers_rightmost_real_ip(self):

@@ -35,11 +35,17 @@ class TestTotp(unittest.TestCase):
 class TestStepUp(unittest.TestCase):
     def test_issue_verify(self):
         store = StepUpStore(expire_seconds=60)
-        token, exp = store.issue(42)
+        token, exp = store.issue(42, "asset_transfer", "totp")
         self.assertEqual(exp, 60)
-        self.assertTrue(store.verify_and_keep(42, token))
-        self.assertFalse(store.verify_and_keep(99, token))
-        self.assertFalse(store.verify_and_keep(42, "bad"))
+        self.assertFalse(store.consume(42, "asset_repair", "totp", token))
+
+        token, _ = store.issue(42, "asset_transfer", "totp")
+        self.assertFalse(store.consume(42, "asset_transfer", "password", token))
+
+        token, _ = store.issue(42, "asset_transfer", "totp")
+        self.assertTrue(store.consume(42, "asset_transfer", "totp", token))
+        self.assertFalse(store.consume(42, "asset_transfer", "totp", token))
+        self.assertFalse(store.consume(42, "asset_transfer", "totp", "bad"))
 
 
 class _FakeRequest:

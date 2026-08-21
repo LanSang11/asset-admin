@@ -105,7 +105,7 @@ class SecurityQueryTests(unittest.TestCase):
             _mod.add_condition(_mod.FilterSpec(), "password", "eq", "x")
 
     def test_legacy_username_contains(self):
-        spec = from_legacy_params(username="nor")
+        spec = from_legacy_params(username="demo")
         rows = [_row(username="demoemp"), _row(username="admin")]
         got = [item["username"] for item in filter_rows(rows, spec)]
         self.assertEqual(got, ["demoemp"])
