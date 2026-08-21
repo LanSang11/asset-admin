@@ -1,0 +1,14 @@
+web/node_modules
+web/dist
+/.env
+*.sqlite3
+.secret_key
+gateway_blacklist.json
+app/logs/
+secrets/
+**/__pycache__/
+*.pyc
+.mypy_cache/
+.ruff_cache/
+.idea/
+.git/

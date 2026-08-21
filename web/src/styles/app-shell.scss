@@ -1,0 +1,288 @@
+:root {
+  --shell-header-height: 72px;
+  --shell-routebar-height: 48px;
+  --nav-icon-size: 20px;
+  --action-hit-size: 40px;
+  --surface-radius: 10px;
+  --shell-page-gap: 24px;
+  --shell-bg: #eef4f8;
+  --shell-header-bg: #071e35;
+  --shell-header-muted: #a9c0d5;
+  --shell-header-text: #ffffff;
+  --topbar-action-hover: rgba(148, 163, 184, 0.18);
+  --shell-accent: #149bd3;
+  --shell-accent-soft: #e7f6fc;
+  --shell-success: #50b992;
+  --shell-warning: #e9a23b;
+  --shell-danger: #df6a70;
+  --shell-surface: #ffffff;
+  --shell-surface-muted: #f6f9fb;
+  --shell-border: #d6e1e9;
+  --shell-text: #0d2138;
+  --shell-text-muted: #6b8095;
+  --shell-shadow: 0 8px 24px rgba(20, 48, 73, 0.06);
+}
+
+.dark {
+  --shell-bg: #0c1622;
+  --shell-header-bg: #061525;
+  --shell-header-muted: #9eb4c9;
+  --shell-accent-soft: rgba(20, 155, 211, 0.16);
+  --shell-surface: #142230;
+  --shell-surface-muted: #192a39;
+  --shell-border: #2a3d4e;
+  --shell-text: #edf5fb;
+  --shell-text-muted: #9db0c0;
+  --shell-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+}
+
+.portal-layout {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--shell-bg);
+}
+
+.portal-topbar {
+  position: relative;
+  z-index: 20;
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  height: var(--shell-header-height);
+  min-height: var(--shell-header-height);
+  color: var(--shell-header-text);
+  background: var(--shell-header-bg);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.portal-topbar__brand,
+.portal-topbar__actions {
+  flex: 0 0 auto;
+}
+
+.portal-topbar__nav {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+}
+
+.portal-topbar__actions,
+.header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 0;
+  padding-right: 20px;
+}
+
+.header-action,
+.header-actions > :where(button, a, div),
+.mobile-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--action-hit-size);
+  min-height: var(--action-hit-size);
+  line-height: 1;
+}
+
+.app-nav-icon,
+.portal-topbar .n-menu-item-content-header > .n-icon {
+  display: inline-flex;
+  flex: 0 0 var(--nav-icon-size);
+  align-items: center;
+  justify-content: center;
+  width: var(--nav-icon-size);
+  height: var(--nav-icon-size);
+  line-height: 1;
+}
+
+.app-nav-icon svg {
+  display: block;
+}
+
+.portal-routebar {
+  flex: 0 0 var(--shell-routebar-height);
+  min-height: var(--shell-routebar-height);
+  border-bottom: 1px solid var(--shell-border);
+  background: var(--shell-surface);
+}
+
+.portal-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--shell-bg);
+}
+
+.app-page {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: var(--shell-page-gap);
+  color: var(--shell-text);
+  background: var(--shell-bg);
+}
+
+.common-page__header {
+  min-height: 44px;
+  margin-bottom: 16px;
+  padding: 0 2px;
+}
+
+.common-page__title {
+  margin: 0;
+  color: var(--shell-text);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.common-page__surface,
+.dashboard-panel,
+.metric-card {
+  border: 1px solid var(--shell-border);
+  border-radius: var(--surface-radius);
+  background: var(--shell-surface);
+  box-shadow: var(--shell-shadow);
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.dashboard-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+}
+
+.metric-card {
+  position: relative;
+  min-width: 0;
+  padding: 18px;
+  overflow: hidden;
+}
+
+.metric-card::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--metric-accent, var(--shell-accent));
+  content: '';
+}
+
+.metric-card--primary { --metric-accent: var(--shell-accent); }
+.metric-card--success { --metric-accent: var(--shell-success); }
+.metric-card--warning { --metric-accent: var(--shell-warning); }
+.metric-card--danger { --metric-accent: var(--shell-danger); }
+.metric-card--info { --metric-accent: #58a9df; }
+.metric-card--neutral { --metric-accent: #8ca0b3; }
+
+.metric-card__top,
+.dashboard-panel__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.metric-card__label,
+.dashboard-panel__subtitle,
+.metric-card__hint {
+  color: var(--shell-text-muted);
+}
+
+.metric-card__value {
+  margin-top: 10px;
+  color: var(--shell-text);
+  font-size: clamp(26px, 2.2vw, 34px);
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.metric-card__hint {
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.metric-card__badge {
+  padding: 3px 7px;
+  border-radius: 6px;
+  color: var(--shell-accent);
+  background: var(--shell-accent-soft);
+  font-size: 11px;
+}
+
+.dashboard-panel {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.dashboard-panel__head {
+  min-height: 54px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--shell-border);
+}
+
+.dashboard-panel__title {
+  margin: 0;
+  color: var(--shell-text);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.dashboard-panel__subtitle {
+  margin: 3px 0 0;
+  font-size: 12px;
+}
+
+.dashboard-panel__body {
+  min-width: 0;
+  padding: 18px;
+}
+
+@media (max-width: 1199px) {
+  :root { --shell-page-gap: 20px; }
+}
+
+@media (max-width: 767px) {
+  :root {
+    --shell-header-height: 64px;
+    --shell-page-gap: 12px;
+  }
+
+  .portal-topbar__actions,
+  .header-actions {
+    gap: 0;
+    padding-right: 8px;
+  }
+
+  .app-page { padding: var(--shell-page-gap); }
+  .dashboard-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .metric-card { padding: 14px; }
+  .metric-card__value { font-size: 25px; }
+  .dashboard-panel__head,
+  .dashboard-panel__body { padding: 14px; }
+}
+
+@media (max-width: 420px) {
+  .dashboard-metrics { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

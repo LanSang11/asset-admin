@@ -1,0 +1,327 @@
+/**
+ * 深海玻璃 · Design tokens（仅登录页）
+ * 禁止引入 P5 红黑主色 / 游戏素材
+ */
+
+.login-root {
+  --yd-bg-deep: #050b16;
+  --yd-bg-mid: #0a1628;
+  --yd-accent: #38bdf8;
+  --yd-accent-2: #22d3ee;
+  --yd-glass: rgba(15, 23, 42, 0.55);
+  --yd-glass-solid: rgba(15, 23, 42, 0.92);
+  --yd-glass-border: rgba(125, 211, 252, 0.35);
+  --yd-text: #e2e8f0;
+  --yd-text-muted: rgba(226, 232, 240, 0.72);
+  --yd-card-radius: 14px;
+  /* 鼠标跟随光默认中心 */
+  --mx: 50%;
+  --my: 42%;
+  --spotlight-alpha: 0.18;
+}
+
+.login-root {
+  position: relative;
+  min-height: 100vh;
+  width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: var(--yd-bg-deep);
+  color: var(--yd-text);
+  isolation: isolate;
+}
+
+/* 表单区必须可点；氛围层强制 pointer-events:none（见 LoginAtmosphere） */
+.login-content {
+  position: relative;
+  z-index: 2;
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 24px 16px 40px;
+  pointer-events: none;
+  box-sizing: border-box;
+}
+
+.login-content > * {
+  pointer-events: auto;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 400px;
+  margin: auto;
+  padding: 36px 28px 32px;
+  border-radius: var(--yd-card-radius);
+  background: var(--yd-glass);
+  border: 1px solid var(--yd-glass-border);
+  box-shadow:
+    0 0 0 1px rgba(56, 189, 248, 0.06),
+    0 20px 50px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  backdrop-filter: blur(18px) saturate(1.2);
+  box-sizing: border-box;
+}
+
+/* 无 backdrop-filter 时实色半透兜底 */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .login-card {
+    background: var(--yd-glass-solid);
+  }
+}
+
+.login-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 8px;
+}
+
+.login-brand-logo {
+  width: 56px;
+  height: 56px;
+  min-width: 56px;
+  min-height: 56px;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+  box-shadow:
+    0 0 0 2px rgba(125, 211, 252, 0.35),
+    0 8px 24px rgba(0, 0, 0, 0.35);
+  background: #fff;
+  user-select: none;
+}
+
+.login-field {
+  margin-top: 22px;
+}
+
+.login-field--captcha {
+  margin-top: 18px;
+}
+
+.login-field--totp {
+  margin-top: 18px;
+}
+
+.login-field--submit {
+  margin-top: 22px;
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  padding-top: 8px;
+  padding-bottom: 4px;
+  background: linear-gradient(to bottom, rgba(15, 23, 42, 0), var(--yd-glass-solid) 28%);
+}
+
+.login-auth-dl {
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--yd-text-muted);
+}
+
+.login-auth-dl summary {
+  cursor: pointer;
+  color: var(--yd-accent);
+  list-style: none;
+}
+
+.login-auth-dl summary::-webkit-details-marker {
+  display: none;
+}
+
+/*
+ * Naive 深海输入：直写计算样式（仅靠 --n-* 变量会被主题/内联盖掉，实测仍为白底）
+ * 不改 SlideCaptcha / 登录 API 语义
+ */
+.login-card .n-input {
+  --n-border: 1px solid rgba(125, 211, 252, 0.28) !important;
+  --n-border-hover: 1px solid rgba(56, 189, 248, 0.55) !important;
+  --n-border-focus: 1px solid rgba(56, 189, 248, 0.8) !important;
+  --n-color: rgba(8, 15, 28, 0.72) !important;
+  --n-color-focus: rgba(8, 15, 28, 0.85) !important;
+  --n-text-color: #e2e8f0 !important;
+  --n-placeholder-color: rgba(226, 232, 240, 0.42) !important;
+  --n-caret-color: #38bdf8 !important;
+  --n-box-shadow-focus: 0 0 0 2px rgba(56, 189, 248, 0.22) !important;
+  --n-height: 50px !important;
+  border-radius: 10px !important;
+  background: transparent !important;
+}
+
+.login-card .n-input .n-input-wrapper {
+  background-color: rgba(8, 15, 28, 0.72) !important;
+  background-image: none !important;
+  border-radius: 10px !important;
+  box-shadow: inset 0 0 0 1px rgba(125, 211, 252, 0.22) !important;
+}
+
+.login-card .n-input:not(.n-input--disabled):hover .n-input-wrapper {
+  box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.5) !important;
+}
+
+.login-card .n-input.n-input--focus .n-input-wrapper {
+  background-color: rgba(8, 15, 28, 0.88) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(56, 189, 248, 0.75),
+    0 0 0 2px rgba(56, 189, 248, 0.18) !important;
+}
+
+.login-card .n-input .n-input__input-el,
+.login-card .n-input .n-input__textarea-el {
+  color: #e2e8f0 !important;
+  -webkit-text-fill-color: #e2e8f0 !important;
+  caret-color: #38bdf8 !important;
+  background: transparent !important;
+}
+
+.login-card .n-input .n-input__placeholder span,
+.login-card .n-input .n-input__placeholder {
+  color: rgba(226, 232, 240, 0.42) !important;
+}
+
+.login-card .n-input .n-input__suffix,
+.login-card .n-input .n-input__prefix,
+.login-card .n-input .n-base-icon,
+.login-card .n-input .n-input__eye {
+  color: rgba(186, 230, 253, 0.75) !important;
+}
+
+.login-card .n-input .n-input__separator {
+  background-color: rgba(125, 211, 252, 0.25) !important;
+}
+
+/* 浏览器自动填充：避免黄底破坏深海主题 */
+.login-card .n-input .n-input__input-el:-webkit-autofill,
+.login-card .n-input .n-input__input-el:-webkit-autofill:hover,
+.login-card .n-input .n-input__input-el:-webkit-autofill:focus {
+  -webkit-text-fill-color: #e2e8f0 !important;
+  caret-color: #38bdf8 !important;
+  transition: background-color 99999s ease-out;
+  box-shadow: 0 0 0 1000px rgba(8, 15, 28, 0.92) inset !important;
+}
+
+/* 主按钮：直写背景/文字，避免主题白字白底 */
+.login-card .n-button.n-button--primary-type {
+  --n-color: #0ea5e9 !important;
+  --n-color-hover: #38bdf8 !important;
+  --n-color-pressed: #0284c7 !important;
+  --n-color-focus: #0ea5e9 !important;
+  --n-text-color: #041018 !important;
+  --n-text-color-hover: #041018 !important;
+  --n-text-color-pressed: #041018 !important;
+  --n-text-color-focus: #041018 !important;
+  --n-border: 1px solid transparent !important;
+  --n-border-hover: 1px solid transparent !important;
+  --n-border-pressed: 1px solid transparent !important;
+  --n-border-focus: 1px solid transparent !important;
+  --n-ripple-color: rgba(56, 189, 248, 0.35) !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.04em;
+  border-radius: 10px !important;
+  background-color: #0ea5e9 !important;
+  color: #041018 !important;
+  height: 50px !important;
+}
+
+.login-card .n-button.n-button--primary-type:hover {
+  background-color: #38bdf8 !important;
+  color: #041018 !important;
+}
+
+.login-card .n-button.n-button--primary-type:active,
+.login-card .n-button.n-button--primary-type.n-button--pressed {
+  background-color: #0284c7 !important;
+  color: #041018 !important;
+}
+
+.login-card .n-button.n-button--primary-type .n-button__content {
+  color: #041018 !important;
+}
+
+/* 滑块区域在深海主题下的文字对比（不改 SlideCaptcha 校验逻辑） */
+.login-card .slide-captcha .slide-head {
+  color: var(--yd-text-muted);
+}
+
+.login-card .slide-captcha .slide-refresh {
+  color: var(--yd-accent);
+}
+
+.login-card .slide-captcha .slide-err {
+  color: #f87171;
+}
+
+.login-card .slide-captcha .slide-panel {
+  background: rgba(8, 15, 28, 0.55);
+  border: 1px solid rgba(125, 211, 252, 0.2);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
+}
+
+.login-card .slide-captcha .slide-loading {
+  background: rgba(5, 11, 22, 0.72);
+  color: var(--yd-text-muted);
+}
+
+.login-card .slide-captcha .slide-track {
+  background: rgba(8, 15, 28, 0.55);
+  border-color: rgba(125, 211, 252, 0.25);
+}
+
+.login-card .slide-captcha .slide-hint {
+  color: rgba(226, 232, 240, 0.45);
+}
+
+.login-card .slide-captcha .slide-track-fill {
+  background: rgba(56, 189, 248, 0.22);
+}
+
+.login-card .slide-captcha .slide-btn {
+  background: rgba(15, 23, 42, 0.95);
+  border-color: rgba(125, 211, 252, 0.45);
+  color: var(--yd-accent);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+}
+
+.login-card .slide-captcha .slide-btn.active {
+  border-color: var(--yd-accent);
+}
+
+.login-card .slide-captcha .slide-btn.ok {
+  background: #059669;
+  border-color: #34d399;
+  color: #ecfdf5;
+}
+
+/* 窄屏：卡片与内边距收紧，滑块不溢出 */
+@media (max-width: 420px) {
+  .login-card {
+    padding: 28px 16px 24px;
+    max-width: 100%;
+  }
+
+  .login-content {
+    padding: 16px 10px 28px;
+  }
+
+  .login-brand-logo {
+    width: 48px;
+    height: 48px;
+    min-width: 48px;
+    min-height: 48px;
+  }
+}
+
+/* 减弱动态：静态极淡光即可 */
+@media (prefers-reduced-motion: reduce) {
+  .login-root {
+    --spotlight-alpha: 0.08;
+    --mx: 50%;
+    --my: 40%;
+  }
+}

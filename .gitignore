@@ -1,0 +1,72 @@
+# --- credentials / env ---
+.secret_key
+.env
+.env.local
+.env.*.local
+*.env
+!*.env.example
+!web/.env.example
+web/.env
+secrets/
+accounts.env
+
+# --- keys ---
+id_rsa
+id_ed25519
+*.pem
+*.p12
+*.pfx
+
+# --- runtime / local ---
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.idea/
+.vscode/
+.vscode
+.DS_Store
+._.DS_Store
+
+# --- node / build ---
+node_modules/
+web/node_modules/
+web/dist/
+web/stats.html
+web/build/*.bak
+web/build/*.bak-*
+web/build/constant.js.bak-test
+
+# --- data / backups ---
+*.sqlite3
+*.sqlite
+*.sqlite3-journal
+*.sqlite3-shm
+*.sqlite3-wal
+db/
+db.sqlite3
+db.sqlite3-journal
+db.sqlite3-shm
+db.sqlite3-wal
+uploads/
+*.zip
+
+# --- runtime security state (IPs / uids) ---
+gateway_blacklist.json
+
+# --- qa artifacts ---
+.playwright-mcp/
+totp-bind-qr.png
+profile-1/
+profile-2/
+profile-3/
+
+# --- internal QA / machine-specific (keep on disk, do not commit) ---
+design-qa.md
+deploy/Docker数据迁移说明书.md
+
+# --- accidental empty junk (Aug 16) ---
+/5

@@ -1,0 +1,143 @@
+.loading-container {
+	position: fixed;
+	inset: 0;
+	display: grid;
+	place-items: center;
+	box-sizing: border-box;
+	padding: 20px;
+	background: #f6f8fc;
+	pointer-events: none;
+}
+
+.loading-content {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	width: calc(100% - 40px);
+	max-width: 280px;
+	text-align: center;
+	transform: translateY(-20px);
+}
+
+.loading-logo {
+	display: block;
+	width: 128px;
+	height: 128px;
+	object-fit: cover;
+	border-radius: 50%;
+	box-shadow: 0 12px 32px rgb(15 23 42 / 12%);
+	user-select: none;
+}
+
+.loading-spin__container {
+	flex: 0 0 auto;
+	width: 56px;
+	height: 56px;
+	margin: 28px 0 24px;
+}
+
+.loading-spin {
+	position: relative;
+	height: 100%;
+	animation: loadingSpin 1s linear infinite;
+}
+
+.left-0 {
+  left: 0;
+}
+.right-0 {
+  right: 0;
+}
+.top-0 {
+  top: 0;
+}
+.bottom-0 {
+  bottom: 0;
+}
+
+.loading-spin-item {
+	position: absolute;
+  height: 16px;
+  width: 16px;
+	background-color: var(--primary-color);
+  border-radius: 8px;
+  -webkit-animation: loadingPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  animation: loadingPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes loadingSpin {
+  from {
+    -webkit-transform: rotate(0deg);
+    transform: rotate(0deg);
+  }
+  to {
+    -webkit-transform: rotate(360deg);
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes loadingPulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: .5;
+  }
+}
+
+.loading-delay-500 {
+  -webkit-animation-delay: 500ms;
+  animation-delay: 500ms;
+}
+.loading-delay-1000 {
+  -webkit-animation-delay: 1000ms;
+  animation-delay: 1000ms;
+}
+.loading-delay-1500 {
+  -webkit-animation-delay: 1500ms;
+  animation-delay: 1500ms;
+}
+
+.loading-title {
+	max-width: 100%;
+	font-size: 22px;
+	font-weight: 600;
+	line-height: 1.4;
+	color: #344054;
+	word-break: break-word;
+}
+
+@media (max-width: 480px) {
+	.loading-content {
+		transform: translateY(-12px);
+	}
+
+	.loading-logo {
+		width: 104px;
+		height: 104px;
+	}
+
+	.loading-spin__container {
+		width: 48px;
+		height: 48px;
+		margin: 24px 0 20px;
+	}
+
+	.loading-spin-item {
+		width: 14px;
+		height: 14px;
+		border-radius: 50%;
+	}
+
+	.loading-title {
+		font-size: 20px;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.loading-spin,
+	.loading-spin-item {
+		-webkit-animation: none;
+		animation: none;
+	}
+}

@@ -1,0 +1,32 @@
+# systemd 单元模板 — 资产系统后端（原生，无 Docker）
+# 安装（需 sudo）：
+#   1. 按服务器路径修改 WorkingDirectory / ExecStart / User
+#   2. sudo cp asset-system.service /etc/systemd/system/
+#   3. sudo systemctl daemon-reload
+#   4. sudo systemctl enable --now asset-system
+#   5. sudo systemctl status asset-system
+
+[Unit]
+Description=Asset System API (uvicorn)
+After=network.target
+
+[Service]
+Type=simple
+User=admin
+Group=admin
+WorkingDirectory=/var/www/asset-system
+Environment=PROXY_HEADERS=1
+Environment=FORWARDED_ALLOW_IPS=127.0.0.1
+Environment=RELOAD=0
+# 部署时把公网 IP 写进 CORS（与 Nginx 同域时通常仍建议带上）
+# Environment=CORS_ORIGINS=["http://YOUR_PUBLIC_IP:9999","http://127.0.0.1:9999"]
+ExecStart=/var/www/asset-system/venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips=127.0.0.1
+Restart=on-failure
+RestartSec=5
+
+# PrivateTmp 保留。NoNewPrivileges 关闭：超管续签要 sudo 调用 /usr/local/sbin/asset-tls（sudoers 锁死参数）。
+NoNewPrivileges=false
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
