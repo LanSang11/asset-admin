@@ -1,55 +1,112 @@
 <p align="center">
-  <img alt="资产管理系统" width="200" src="deploy/sample-picture/logo.svg">
+  <img alt="资产管理系统" width="96" src="web/public/resource/company-logo.jpg">
 </p>
 
 <h1 align="center">资产管理系统</h1>
 
-员工与资产台账后台。FastAPI + Vue3 + Naive UI：RBAC、动态路由、JWT；员工、资产、领用/归还/审批、操作日志、导出与看板。依赖组件见 `NOTICE`。
+<p align="center">
+  员工与资产台账后台：领用、归还、调拨、报修、盘点、审批、知识库、安全中心。
+</p>
 
-### 特性
-- **技术栈**：Python 3.11 + FastAPI 高性能异步框架，Vue3 + Vite 前端。
-- **动态路由**：后端动态路由，结合 RBAC 权限模型，提供精细的菜单路由控制。
-- **JWT 鉴权**：使用 JSON Web Token 进行身份验证和授权。
-- **细粒度权限控制**：按钮和接口级别的权限控制，不同角色（超级管理员 / 部门主管 / 普通员工）所见内容不同。
-- **操作日志**：增删改查与登录行为全记录，可追溯。
-- **AI 助手**：可接入兼容 OpenAI 协议的大模型（需自行配置 Key，仓库内不含密钥）。
+<p align="center">
+  <img alt="Python 3.11" src="https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white">
+  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-0.111-009688?logo=fastapi&logoColor=white">
+  <img alt="Vue 3" src="https://img.shields.io/badge/Vue-3-42b883?logo=vuedotjs&logoColor=white">
+  <img alt="Naive UI" src="https://img.shields.io/badge/Naive%20UI-2-36ad6a">
+  <img alt="License MIT" src="https://img.shields.io/badge/License-MIT-yellow">
+</p>
 
-### 二次验证
+<p align="center">
+  <a href="./README-en.md">English</a>
+  ·
+  <a href="./README-部署与使用教程.md">部署教程</a>
+  ·
+  <a href="./LICENSE">MIT License</a>
+</p>
 
-登录时**不会**根据用户名提前探测是否开了 TOTP。未绑定账号一次就能进；已绑定账号在滑块+密码通过后才会出现 6 位框。
+## 界面预览
 
-空库第一个 `admin` 是超级管理员，必须先在个人中心按向导绑定验证器（Google / Microsoft Authenticator 等），再重新登录后才能进后台。仓库和演示脚本**不会**预置已绑定密钥。不要用 SQL 去关二次验证。
+登录（滑块校验）：
 
-导出、删用户、改角色、封禁等默认还要动态码或密码；建员工/资产不用。完整首次步骤见 `README-部署与使用教程.md` 第七节。
+<p align="center">
+  <img src="deploy/sample-picture/screenshots/login.png" alt="登录" width="720">
+</p>
 
-### 到期换密
+管理端工作台：
 
-安全中心可以设置「密码最长天数」或「全员截止日期」，**默认关闭**。打开后，过期账号只能先改密（沿用已有 `must_change_password`）。
+<p align="center">
+  <img src="deploy/sample-picture/screenshots/workbench.png" alt="管理端工作台" width="900">
+</p>
 
-### AI 配置
+员工 / 主管工作台：
 
-在 AI 助手里选 DeepSeek / OpenAI 新地址 / OpenAI 旧兼容，一般只粘贴自己的 Key。默认模型是 `deepseek-v4-flash`。未填 Key 不能外呼。助手是只读笼子：不能跑 SQL、Shell、读盘，也不会把密钥送给模型。
+<p align="center">
+  <img src="deploy/sample-picture/screenshots/work-portal.png" alt="员工工作台" width="900">
+</p>
 
-### 开源假数据
+| 资产管理 | 员工管理 |
+| --- | --- |
+| <img src="deploy/sample-picture/screenshots/assets.png" alt="资产管理"> | <img src="deploy/sample-picture/screenshots/employees.png" alt="员工管理"> |
+| 统计看板 | 知识库 |
+| <img src="deploy/sample-picture/screenshots/dashboard.png" alt="统计看板"> | <img src="deploy/sample-picture/screenshots/kb.png" alt="知识库"> |
+| 调拨 | 盘点 |
+| <img src="deploy/sample-picture/screenshots/transfer.png" alt="调拨"> | <img src="deploy/sample-picture/screenshots/inventory.png" alt="盘点"> |
+| AI 助手 | 安全中心 |
+| <img src="deploy/sample-picture/screenshots/ai.png" alt="AI 助手"> | <img src="deploy/sample-picture/screenshots/security.png" alt="安全中心"> |
+| 用户与角色 | 手机扫码 |
+| <img src="deploy/sample-picture/screenshots/users.png" alt="用户管理"> | <img src="deploy/sample-picture/screenshots/scan.png" alt="扫码详情"> |
 
-本地空库可写入张三/李四（`example.com`）：
+截图来自本地演示数据（张三 / 李四 / `example.com`），不含生产环境信息。
+
+## 功能
+
+- **台账**：员工、资产、分类、位置、质保到期提醒
+- **流转**：领用 / 归还、调拨、报修、审批
+- **盘点**：发起盘点、对账、只记录不自动报废
+- **两个入口**：管理后台与员工工作台，按角色看到不同菜单
+- **安全**：登录滑块、TOTP、操作二次验证、安全中心（登录日志 / 封禁 / 证书）
+- **知识库与 AI**：上传说明文档后提问；AI 只读，仓库不含密钥
+- **扫码**：资产二维码，手机打开详情后可报修或调拨
+
+权限模型：超级管理员 / 部门主管 / 普通员工。按钮和接口都按角色控制。
+
+## 快速开始
+
+```bash
+git clone https://github.com/LanSang11/asset-admin.git
+cd asset-admin
+
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+python run.py
+```
+
+另开终端构建并预览前端：
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+浏览器打开 http://127.0.0.1:3100 。完整步骤见 `README-部署与使用教程.md`。
+
+本地空库可写入演示账号（张三 / 李四，`example.com`）：
 
 ```bash
 set DEMO_PASSWORD=你的演示密码
 python deploy/init_oss_demo_data.py --db app.db
 ```
 
-脚本会拒绝现网路径。不要对云端库跑，也不要把 Key 或密码写进仓库。
+不要对生产库跑，也不要把 Key 或密码写进仓库。空库第一个 `admin` 需要先绑定验证器才能进后台。
 
-### 本地部署
-```bash
-docker run -d --restart=always --name=asset-system -p 127.0.0.1:9999:80 asset-system:local
+## 目录
+
 ```
-访问 http://localhost:9999
+app/       FastAPI 后端
+web/       Vue3 前端
+deploy/    部署模板、演示脚本、截图
+```
 
-更完整的步骤见 `README-部署与使用教程.md`。
-
-### 目录结构
-- `web/`：Vue3 前端
-- `app/`：FastAPI 后端
-- `deploy/`：部署模板与脚本
+第三方组件见 `NOTICE`。

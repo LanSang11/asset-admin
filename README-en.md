@@ -1,26 +1,46 @@
 <p align="center">
-  <img alt="Asset Management System" width="200" src="deploy/sample-picture/logo.svg">
+  <img alt="Asset Management System" width="96" src="web/public/resource/company-logo.jpg">
 </p>
 
 <h1 align="center">Asset Management System</h1>
 
-English | [简体中文](./README.md)
+<p align="center">
+  <a href="./README.md">简体中文</a>
+  ·
+  <a href="./LICENSE">MIT License</a>
+</p>
 
-Employee and asset ledger admin. FastAPI + Vue3 + Naive UI: RBAC, dynamic routing, JWT; employees, assets, use/return/approval, audit logs, export, and dashboards. Third-party components are listed in `NOTICE`.
+Employee and asset ledger: checkout, return, transfer, repair, inventory, approval, knowledge base, and security center.
 
-### Features
-- **Tech Stack**: Python 3.11 + FastAPI async framework, Vue3 + Vite front-end.
-- **Dynamic Routing**: Backend-driven dynamic routing combined with RBAC.
-- **JWT Authentication**: Identity verification and authorization via JSON Web Tokens.
-- **Granular Permission Control**: Button and API level permissions for Super Admin / Department Manager / Employee.
-- **Operation Logs**: Audit trail of CRUD operations and login events.
-- **AI Assistant**: Optional OpenAI-compatible LLM (bring your own key; no keys in the repo).
+## Screenshots
 
-### Local Deployment
+<p align="center">
+  <img src="deploy/sample-picture/screenshots/login.png" alt="Login" width="720">
+</p>
+
+<p align="center">
+  <img src="deploy/sample-picture/screenshots/workbench.png" alt="Admin workbench" width="900">
+</p>
+
+Screenshots use local demo data (`example.com`). They do not contain production hosts or credentials.
+
+## Features
+
+- Ledger, checkout/return, transfer, repair, inventory, dual portals
+- Slider login, TOTP, step-up verification, security center
+- Knowledge base and optional AI (bring your own key)
+
+## Quick start
+
 ```bash
-docker run -d --restart=always --name=asset-system -p 127.0.0.1:9999:80 asset-system:local
+git clone https://github.com/LanSang11/asset-admin.git
+cd asset-admin
+python -m venv .venv
+pip install -r requirements.txt
+python run.py
 ```
-Visit http://localhost:9999
+
+See `README.md` for the full gallery and `README-部署与使用教程.md` for deployment.
 
 ### Directory
 - `web/`: Vue3 front-end
