@@ -1,6 +1,15 @@
 <script setup>
 import { h, onMounted, ref } from 'vue'
-import { NButton, NForm, NFormItem, NInput, NInputNumber, NPopconfirm, NSelect, NTag } from 'naive-ui'
+import {
+  NButton,
+  NForm,
+  NFormItem,
+  NInput,
+  NInputNumber,
+  NPopconfirm,
+  NSelect,
+  NTag,
+} from 'naive-ui'
 
 import CommonPage from '@/components/page/CommonPage.vue'
 import QueryBarItem from '@/components/query-bar/QueryBarItem.vue'
@@ -53,7 +62,10 @@ onMounted(() => {
     categoryOptions.value = (res.data || []).map((c) => ({ label: c, value: c }))
   })
   api.getEmployeeList({ page: 1, page_size: 100 }).then((res) => {
-    employeeOptions.value = (res.data?.list || []).map((e) => ({ label: `${e.emp_no} ${e.name}`, value: e.id }))
+    employeeOptions.value = (res.data?.list || []).map((e) => ({
+      label: `${e.emp_no} ${e.name}`,
+      value: e.id,
+    }))
   })
 })
 
@@ -104,7 +116,11 @@ const columns = [
     align: 'center',
     render: (row) =>
       row.warranty_label
-        ? h(NTag, { size: 'small', type: warrantyTagType[row.warranty_state] || 'default' }, () => row.warranty_label)
+        ? h(
+            NTag,
+            { size: 'small', type: warrantyTagType[row.warranty_state] || 'default' },
+            () => row.warranty_label
+          )
         : row.warranty_until || '-',
   },
   {
@@ -141,7 +157,7 @@ const columns = [
           size: 'small',
           onClick: () => openQr(row),
         },
-        { default: () => '二维码' },
+        { default: () => '二维码' }
       ),
       h(
         NButton,
@@ -151,7 +167,7 @@ const columns = [
           style: 'margin-left:8px',
           onClick: () => handleEdit(row),
         },
-        { default: () => '编辑' },
+        { default: () => '编辑' }
       ),
       h(
         NPopconfirm,
@@ -163,10 +179,10 @@ const columns = [
             h(
               NButton,
               { size: 'small', type: 'error', style: 'margin-left:8px' },
-              { default: () => '删除' },
+              { default: () => '删除' }
             ),
           default: () => `确定删除资产「${row.name}」吗？`,
-        },
+        }
       ),
     ],
   },
@@ -206,7 +222,10 @@ async function onImportFile(e) {
     const d = preview.data || {}
     const msg = `预检：可导入 ${d.ok || 0}，跳过 ${d.skipped || 0}，错误 ${d.errors || 0}`
     if (!(d.ok > 0)) {
-      $message.warning(msg + (d.error_rows?.[0] ? `；首错：第${d.error_rows[0].line}行 ${d.error_rows[0].reason}` : ''))
+      $message.warning(
+        msg +
+          (d.error_rows?.[0] ? `；首错：第${d.error_rows[0].line}行 ${d.error_rows[0].reason}` : '')
+      )
       return
     }
     await $dialog.confirm({
@@ -237,7 +256,13 @@ async function onImportFile(e) {
 <template>
   <CommonPage>
     <template #action>
-      <input ref="fileInputRef" type="file" accept=".csv,text/csv" style="display: none" @change="onImportFile" />
+      <input
+        ref="fileInputRef"
+        type="file"
+        accept=".csv,text/csv"
+        style="display: none"
+        @change="onImportFile"
+      />
       <NButton style="margin-right: 8px" @click="handleExport">导出 CSV</NButton>
       <NButton style="margin-right: 8px" @click="pickImport">导入 CSV</NButton>
       <NButton type="primary" @click="addAsset">新增资产</NButton>
@@ -248,43 +273,45 @@ async function onImportFile(e) {
       :columns="columns"
       :get-data="api.getAssetList"
     >
-      <QueryBarItem label="关键词" label-width="60">
-        <NInput
-          v-model:value="queryItems.keyword"
-          type="text"
-          clearable
-          placeholder="名称/编号/序列号"
-          style="width: 180px"
-          @keydown.enter="$table?.handleSearch()"
-        />
-      </QueryBarItem>
-      <QueryBarItem label="分类" label-width="50">
-        <NSelect
-          v-model:value="queryItems.category"
-          :options="categoryOptions"
-          clearable
-          placeholder="全部"
-          style="width: 130px"
-        />
-      </QueryBarItem>
-      <QueryBarItem label="状态" label-width="50">
-        <NSelect
-          v-model:value="queryItems.status"
-          :options="statusOptions"
-          clearable
-          placeholder="全部"
-          style="width: 110px"
-        />
-      </QueryBarItem>
-      <QueryBarItem label="质保" label-width="50">
-        <NSelect
-          v-model:value="queryItems.warranty_state"
-          :options="warrantyOptions"
-          clearable
-          placeholder="全部"
-          style="width: 130px"
-        />
-      </QueryBarItem>
+      <template #queryBar>
+        <QueryBarItem label="关键词" label-width="60">
+          <NInput
+            v-model:value="queryItems.keyword"
+            type="text"
+            clearable
+            placeholder="名称/编号/序列号"
+            style="width: 180px"
+            @keydown.enter="$table?.handleSearch()"
+          />
+        </QueryBarItem>
+        <QueryBarItem label="分类" label-width="50">
+          <NSelect
+            v-model:value="queryItems.category"
+            :options="categoryOptions"
+            clearable
+            placeholder="全部"
+            style="width: 130px"
+          />
+        </QueryBarItem>
+        <QueryBarItem label="状态" label-width="50">
+          <NSelect
+            v-model:value="queryItems.status"
+            :options="statusOptions"
+            clearable
+            placeholder="全部"
+            style="width: 110px"
+          />
+        </QueryBarItem>
+        <QueryBarItem label="质保" label-width="50">
+          <NSelect
+            v-model:value="queryItems.warranty_state"
+            :options="warrantyOptions"
+            clearable
+            placeholder="全部"
+            style="width: 130px"
+          />
+        </QueryBarItem>
+      </template>
     </CrudTable>
 
     <CrudModal
@@ -293,7 +320,13 @@ async function onImportFile(e) {
       :loading="modalLoading"
       @save="handleSave"
     >
-      <NForm ref="modalFormRef" label-placement="left" label-width="90" :model="modalForm" :rules="rules">
+      <NForm
+        ref="modalFormRef"
+        label-placement="left"
+        label-width="90"
+        :model="modalForm"
+        :rules="rules"
+      >
         <NFormItem label="资产编号" path="asset_no">
           <NInput v-model:value="modalForm.asset_no" placeholder="请输入资产编号" />
         </NFormItem>
@@ -301,7 +334,11 @@ async function onImportFile(e) {
           <NInput v-model:value="modalForm.name" placeholder="请输入资产名称" />
         </NFormItem>
         <NFormItem label="分类" path="category">
-          <NSelect v-model:value="modalForm.category" :options="categoryOptions" placeholder="请选择分类" />
+          <NSelect
+            v-model:value="modalForm.category"
+            :options="categoryOptions"
+            placeholder="请选择分类"
+          />
         </NFormItem>
         <NFormItem label="型号" path="model">
           <NInput v-model:value="modalForm.model" placeholder="请输入型号" />
@@ -316,7 +353,12 @@ async function onImportFile(e) {
           <NInput v-model:value="modalForm.warranty_until" placeholder="如 2027-01-01，可空" />
         </NFormItem>
         <NFormItem label="采购价格" path="price">
-          <NInputNumber v-model:value="modalForm.price" :min="0" placeholder="元" style="width: 100%" />
+          <NInputNumber
+            v-model:value="modalForm.price"
+            :min="0"
+            placeholder="元"
+            style="width: 100%"
+          />
         </NFormItem>
         <NFormItem label="状态" path="status">
           <NSelect v-model:value="modalForm.status" :options="statusOptions" />
@@ -325,7 +367,12 @@ async function onImportFile(e) {
           <NInput v-model:value="modalForm.location" placeholder="请输入存放位置" />
         </NFormItem>
         <NFormItem label="当前领用人" path="owner_emp_id">
-          <NSelect v-model:value="modalForm.owner_emp_id" :options="employeeOptions" clearable placeholder="选择领用人（领用审批通过后自动更新）" />
+          <NSelect
+            v-model:value="modalForm.owner_emp_id"
+            :options="employeeOptions"
+            clearable
+            placeholder="选择领用人（领用审批通过后自动更新）"
+          />
         </NFormItem>
         <NFormItem label="备注" path="remark">
           <NInput v-model:value="modalForm.remark" type="textarea" placeholder="备注" />

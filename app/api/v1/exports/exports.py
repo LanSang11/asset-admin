@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 
 from app.core.ctx import CTX_USER_ID
@@ -20,10 +22,14 @@ async def _require_admin():
 @router.get("/employees", summary="导出员工数据 CSV", dependencies=[DependPermission])
 async def export_employees_csv(
     keyword: str = Query("", description="搜索关键词"),
+    dept_id: int = Query(0, description="部门ID"),
+    status: int = Query(-1, description="状态：-1全部 1在职 0离职"),
+    sort_by: Literal["created_at", "emp_no", "name", "hire_date"] = Query("created_at"),
+    sort_order: Literal["desc", "asc"] = Query("desc"),
     current_user: User = require_operation("export_employees"),
 ):
     await _require_admin()
-    return await export_employees(keyword)
+    return await export_employees(keyword, dept_id, status, sort_by, sort_order)
 
 
 @router.get("/assets", summary="导出资产数据 CSV", dependencies=[DependPermission])

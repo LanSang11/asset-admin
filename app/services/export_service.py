@@ -9,6 +9,7 @@ from typing import List
 from fastapi.responses import StreamingResponse
 
 from app.models.business import Asset, AssetUse, Employee
+from app.services.employee_query import build_employee_filter, resolve_employee_order
 
 # CSV 公式注入防护：Excel 会执行以 = + - @ 开头的单元格
 _FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
@@ -42,13 +43,19 @@ def _csv_response(filename: str, headers: List[str], rows: List[list]) -> Stream
     )
 
 
-async def export_employees(keyword: str = "") -> StreamingResponse:
-    from tortoise.expressions import Q
-    q = Q()
-    if keyword:
-        q = Q(name__icontains=keyword) | Q(emp_no__icontains=keyword)
+async def export_employees(
+    keyword: str = "",
+    dept_id: int = 0,
+    status: int = -1,
+    sort_by: str = "created_at",
+    sort_order: str = "desc",
+) -> StreamingResponse:
     # 修复：导出上限保护（原全量查询，数据量大时内存/响应失控）
-    emps = await Employee.filter(q).order_by("emp_no").limit(EXPORT_MAX_ROWS)
+    emps = (
+        await Employee.filter(build_employee_filter(keyword, dept_id, status))
+        .order_by(resolve_employee_order(sort_by, sort_order))
+        .limit(EXPORT_MAX_ROWS)
+    )
     headers = ["工号", "姓名", "性别", "部门ID", "职位", "入职日期", "手机", "邮箱", "是否主管", "状态"]
     rows = []
     for e in emps:

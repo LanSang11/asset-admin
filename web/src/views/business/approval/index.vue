@@ -77,7 +77,12 @@ const columns = [
     key: 'status',
     width: 120,
     align: 'center',
-    render: (row) => h(NTag, { type: statusTagType[row.status] || 'default', size: 'small' }, { default: () => statusMap[row.status] || row.status }),
+    render: (row) =>
+      h(
+        NTag,
+        { type: statusTagType[row.status] || 'default', size: 'small' },
+        { default: () => statusMap[row.status] || row.status }
+      ),
   },
   { title: '申请时间', key: 'apply_time', width: 160, align: 'center' },
   {
@@ -93,8 +98,13 @@ const columns = [
         withDirectives(
           h(
             NButton,
-            { size: 'small', type: 'success', style: 'margin-right:8px', onClick: () => openApprove(row, true) },
-            { default: () => '通过' },
+            {
+              size: 'small',
+              type: 'success',
+              style: 'margin-right:8px',
+              onClick: () => openApprove(row, true),
+            },
+            { default: () => '通过' }
           ),
           [[vPermission, 'post/api/v1/asset-use/approve']]
         ),
@@ -102,7 +112,7 @@ const columns = [
           h(
             NButton,
             { size: 'small', type: 'error', onClick: () => openApprove(row, false) },
-            { default: () => '驳回' },
+            { default: () => '驳回' }
           ),
           [[vPermission, 'post/api/v1/asset-use/approve']]
         ),
@@ -120,21 +130,28 @@ const columns = [
       :columns="columns"
       :get-data="api.getAssetUseList"
     >
-      <QueryBarItem label="范围" label-width="50">
-        <NSelect
-          v-model:value="queryItems.scope"
-          :options="[
-            { label: '待我审批', value: 'pending' },
-            { label: '全部', value: 'all' },
-            { label: '我的申请', value: 'mine' },
-          ]"
-          style="width: 130px"
-          @update:value="$table?.handleSearch()"
-        />
-      </QueryBarItem>
+      <template #queryBar>
+        <QueryBarItem label="范围" label-width="50">
+          <NSelect
+            v-model:value="queryItems.scope"
+            :options="[
+              { label: '待我审批', value: 'pending' },
+              { label: '全部', value: 'all' },
+              { label: '我的申请', value: 'mine' },
+            ]"
+            style="width: 130px"
+            @update:value="$table?.handleSearch()"
+          />
+        </QueryBarItem>
+      </template>
     </CrudTable>
 
-    <NModal v-model:show="approveVisible" preset="card" :title="approveForm.approve ? '审批通过' : '审批驳回'" style="width: 480px">
+    <NModal
+      v-model:show="approveVisible"
+      preset="card"
+      :title="approveForm.approve ? '审批通过' : '审批驳回'"
+      style="width: 480px"
+    >
       <NInput
         v-model:value="approveForm.comment"
         type="textarea"
@@ -142,7 +159,12 @@ const columns = [
         :rows="3"
       />
       <template #footer>
-        <NButton :type="approveForm.approve ? 'success' : 'error'" style="width: 100%" :loading="approveLoading" @click="submitApprove">
+        <NButton
+          :type="approveForm.approve ? 'success' : 'error'"
+          style="width: 100%"
+          :loading="approveLoading"
+          @click="submitApprove"
+        >
           确认{{ approveForm.approve ? '通过' : '驳回' }}
         </NButton>
       </template>

@@ -192,7 +192,11 @@ const columns = [
     width: 120,
     align: 'center',
     render: (row) =>
-      h(NTag, { type: statusTagType[row.status] || 'default', size: 'small' }, () => statusMap[row.status] || row.status),
+      h(
+        NTag,
+        { type: statusTagType[row.status] || 'default', size: 'small' },
+        () => statusMap[row.status] || row.status
+      ),
   },
   {
     title: '操作',
@@ -203,17 +207,35 @@ const columns = [
       const btns = []
       if (canApprove() && (row.status === 1 || row.status === 2)) {
         btns.push(
-          h(NButton, { size: 'small', type: 'primary', onClick: () => openApprove(row, true) }, () => '通过'),
           h(
             NButton,
-            { size: 'small', type: 'error', style: 'margin-left:6px', onClick: () => openApprove(row, false) },
-            () => '驳回',
+            { size: 'small', type: 'primary', onClick: () => openApprove(row, true) },
+            () => '通过'
           ),
+          h(
+            NButton,
+            {
+              size: 'small',
+              type: 'error',
+              style: 'margin-left:6px',
+              onClick: () => openApprove(row, false),
+            },
+            () => '驳回'
+          )
         )
       }
       if (canComplete() && row.status === 3) {
         btns.push(
-          h(NButton, { size: 'small', type: 'success', style: 'margin-left:6px', onClick: () => openComplete(row) }, () => '修好'),
+          h(
+            NButton,
+            {
+              size: 'small',
+              type: 'success',
+              style: 'margin-left:6px',
+              onClick: () => openComplete(row),
+            },
+            () => '修好'
+          )
         )
       }
       return btns
@@ -225,7 +247,9 @@ const columns = [
 <template>
   <CommonPage>
     <template #action>
-      <NButton v-if="canApply()" type="primary" style="margin-right: 8px" @click="openApply">我要报修</NButton>
+      <NButton v-if="canApply()" type="primary" style="margin-right: 8px" @click="openApply"
+        >我要报修</NButton
+      >
       <NButton v-if="canRegister()" @click="openRegister">登记送修</NButton>
     </template>
     <CrudTable
@@ -234,18 +258,20 @@ const columns = [
       :columns="columns"
       :get-data="api.getAssetRepairList"
     >
-      <QueryBarItem label="范围" label-width="50">
-        <NSelect
-          v-model:value="queryItems.scope"
-          :options="[
-            { label: '默认', value: 'all' },
-            { label: '我的', value: 'mine' },
-            { label: '待我审', value: 'pending' },
-            { label: '维修中', value: 'repairing' },
-          ]"
-          style="width: 120px"
-        />
-      </QueryBarItem>
+      <template #queryBar>
+        <QueryBarItem label="范围" label-width="50">
+          <NSelect
+            v-model:value="queryItems.scope"
+            :options="[
+              { label: '默认', value: 'all' },
+              { label: '我的', value: 'mine' },
+              { label: '待我审', value: 'pending' },
+              { label: '维修中', value: 'repairing' },
+            ]"
+            style="width: 120px"
+          />
+        </QueryBarItem>
+      </template>
     </CrudTable>
 
     <NModal

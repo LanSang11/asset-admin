@@ -8,6 +8,7 @@
 依赖 fastapi/tortoise 未安装时自动跳过（本机可用 test_net_utils.py 等无依赖用例）。
 """
 import os
+import tempfile
 import unittest
 import warnings
 
@@ -99,11 +100,57 @@ class TestBusinessCore(unittest.IsolatedAsyncioTestCase):
         _, dept_matched = await employee_controller.list_employees(1, 10, dept_id=self.dept.id)
         self.assertEqual(len(dept_matched), 10)
 
+        from app.models.business import Employee
+
+        await Employee.create(emp_no="A001", name="阿尔法", dept_id=self.dept.id, status=False)
+        await Employee.create(emp_no="Z999", name="终点", dept_id=self.dept.id, status=True)
+
+        total_active, active_items = await employee_controller.list_employees(
+            1, 100, status=1, sort_by="emp_no", sort_order="asc"
+        )
+        self.assertGreaterEqual(total_active, 1)
+        self.assertTrue(all(item.status for item in active_items))
+        self.assertEqual(
+            [item.emp_no for item in active_items],
+            sorted(item.emp_no for item in active_items),
+        )
+
+        total_inactive, inactive_items = await employee_controller.list_employees(
+            1, 100, status=0, sort_by="name", sort_order="desc"
+        )
+        self.assertEqual(total_inactive, 1)
+        self.assertEqual(inactive_items[0].emp_no, "A001")
+
         # 普通员工只能看见本人
         CTX_USER_ID.set(self.emp_user.id)
         total_self, items_self = await employee_controller.list_employees(1, 10)
         self.assertEqual(total_self, 1)
         self.assertEqual(items_self[0].id, self.emp.id)
+
+    async def test_employee_sort_allowlist_defaults_safely(self):
+        from app.services.employee_query import resolve_employee_order
+
+        self.assertEqual(resolve_employee_order("emp_no", "asc"), "emp_no")
+        self.assertEqual(resolve_employee_order("name", "desc"), "-name")
+        self.assertEqual(resolve_employee_order("password", "asc"), "-created_at")
+        self.assertEqual(resolve_employee_order("created_at", "sideways"), "-created_at")
+
+    async def test_employee_export_uses_filters_sort_and_csv_guards(self):
+        from app.models.business import Employee
+        from app.services.export_service import export_employees
+
+        await Employee.create(emp_no="E900", name="=风险姓名", dept_id=self.dept.id, status=False)
+        await Employee.create(emp_no="E800", name="正常员工", dept_id=self.dept.id, status=True)
+        response = await export_employees(
+            keyword="风险", dept_id=self.dept.id, status=0, sort_by="emp_no", sort_order="asc"
+        )
+        chunks = []
+        async for chunk in response.body_iterator:
+            chunks.append(chunk if isinstance(chunk, bytes) else chunk.encode("utf-8"))
+        content = b"".join(chunks).decode("utf-8-sig")
+        self.assertIn("E900", content)
+        self.assertNotIn("E800", content)
+        self.assertIn("'=风险姓名", content)
 
     # ---------- 资产 ----------
     async def test_asset_create_and_validation(self):
@@ -306,7 +353,16 @@ class TestBusinessCore(unittest.IsolatedAsyncioTestCase):
         """网关 v3：已登录（uid）宽松限流且不进黑名单；未登录严格限流进黑名单"""
         from app.core.gateway import GatewayRateLimitMiddleware, ANON_MAX_REQUESTS, AUTH_MAX_REQUESTS
 
-        gw = GatewayRateLimitMiddleware(None)
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+
+        def isolated_gateway(filename: str):
+            gateway = GatewayRateLimitMiddleware(None)
+            gateway._blacklist_db = os.path.join(temp_dir.name, filename)
+            gateway._blacklist = {}
+            return gateway
+
+        gw = isolated_gateway("auth.json")
         uid = "42"
         # 已登录：超过账号上限（1000）才拒绝，且不产生黑名单
         for _ in range(AUTH_MAX_REQUESTS + 5):
@@ -314,7 +370,7 @@ class TestBusinessCore(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(ok)
         self.assertNotIn(f"uid:{uid}", gw.list_blacklist())
         # 未登录：超限即黑名单（爆破特征）
-        gw2 = GatewayRateLimitMiddleware(None)
+        gw2 = isolated_gateway("anonymous.json")
         for i in range(ANON_MAX_REQUESTS + 3):
             last_ok = gw2._check(gw2._anon_requests, "ip:9.9.9.9", 60, ANON_MAX_REQUESTS, blacklist_on_overflow=True)
         self.assertFalse(last_ok)

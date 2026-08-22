@@ -39,7 +39,10 @@ async function loadAssets(useType) {
   // （原实现归还也加载闲置资产，而闲置资产无 owner，永远选不到可归还项 → 归还功能不可用）
   if (useType === 2) {
     const res = await api.getMyAssets()
-    assetOptions.value = (res.data || []).map((a) => ({ label: `${a.asset_no} ${a.name}`, value: a.id }))
+    assetOptions.value = (res.data || []).map((a) => ({
+      label: `${a.asset_no} ${a.name}`,
+      value: a.id,
+    }))
   } else {
     const res = await api.getAssetList({ page: 1, page_size: 100 })
     assetOptions.value = (res.data?.list || [])
@@ -109,11 +112,28 @@ const columns = [
     key: 'status',
     width: 120,
     align: 'center',
-    render: (row) => h(NTag, { type: statusTagType[row.status] || 'default', size: 'small' }, { default: () => statusMap[row.status] || row.status }),
+    render: (row) =>
+      h(
+        NTag,
+        { type: statusTagType[row.status] || 'default', size: 'small' },
+        { default: () => statusMap[row.status] || row.status }
+      ),
   },
   { title: '申请时间', key: 'apply_time', width: 160, align: 'center' },
-  { title: '主管意见', key: 'manager_comment', width: 140, align: 'center', ellipsis: { tooltip: true } },
-  { title: '管理员意见', key: 'admin_comment', width: 140, align: 'center', ellipsis: { tooltip: true } },
+  {
+    title: '主管意见',
+    key: 'manager_comment',
+    width: 140,
+    align: 'center',
+    ellipsis: { tooltip: true },
+  },
+  {
+    title: '管理员意见',
+    key: 'admin_comment',
+    width: 140,
+    align: 'center',
+    ellipsis: { tooltip: true },
+  },
   {
     title: '操作',
     key: 'actions',
@@ -123,7 +143,7 @@ const columns = [
       h(
         NButton,
         { size: 'small', type: 'info', onClick: () => showHistory(row) },
-        { default: () => '历史追溯' },
+        { default: () => '历史追溯' }
       ),
   },
 ]
@@ -132,9 +152,22 @@ const columns = [
 <template>
   <CommonPage>
     <template #action>
-      <NButton v-permission="'get/api/v1/export/asset-uses'" style="margin-right: 8px" @click="handleExport">导出 CSV</NButton>
-      <NButton v-permission="'post/api/v1/asset-use/apply'" type="primary" style="margin-right: 8px" @click="openApply(1)">申请领用</NButton>
-      <NButton v-permission="'post/api/v1/asset-use/apply'" type="warning" @click="openApply(2)">申请归还</NButton>
+      <NButton
+        v-permission="'get/api/v1/export/asset-uses'"
+        style="margin-right: 8px"
+        @click="handleExport"
+        >导出 CSV</NButton
+      >
+      <NButton
+        v-permission="'post/api/v1/asset-use/apply'"
+        type="primary"
+        style="margin-right: 8px"
+        @click="openApply(1)"
+        >申请领用</NButton
+      >
+      <NButton v-permission="'post/api/v1/asset-use/apply'" type="warning" @click="openApply(2)"
+        >申请归还</NButton
+      >
     </template>
     <CrudTable
       ref="$table"
@@ -142,20 +175,22 @@ const columns = [
       :columns="columns"
       :get-data="api.getAssetUseList"
     >
-      <QueryBarItem label="状态" label-width="50">
-        <NSelect
-          v-model:value="queryItems.status"
-          :options="[
-            { label: '待主管审批', value: 1 },
-            { label: '待管理员审批', value: 2 },
-            { label: '已通过', value: 3 },
-            { label: '已驳回', value: 4 },
-          ]"
-          clearable
-          placeholder="全部"
-          style="width: 130px"
-        />
-      </QueryBarItem>
+      <template #queryBar>
+        <QueryBarItem label="状态" label-width="50">
+          <NSelect
+            v-model:value="queryItems.status"
+            :options="[
+              { label: '待主管审批', value: 1 },
+              { label: '待管理员审批', value: 2 },
+              { label: '已通过', value: 3 },
+              { label: '已驳回', value: 4 },
+            ]"
+            clearable
+            placeholder="全部"
+            style="width: 130px"
+          />
+        </QueryBarItem>
+      </template>
     </CrudTable>
 
     <!-- 申请弹窗 -->
@@ -178,7 +213,12 @@ const columns = [
     </NModal>
 
     <!-- 历史追溯弹窗 -->
-    <NModal v-model:show="historyVisible" preset="card" :title="`资产历史：${historyAssetName}`" style="width: 640px">
+    <NModal
+      v-model:show="historyVisible"
+      preset="card"
+      :title="`资产历史：${historyAssetName}`"
+      style="width: 640px"
+    >
       <n-data-table
         :columns="[
           { title: '时间', key: 'use_time', width: 160 },

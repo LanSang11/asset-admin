@@ -42,7 +42,10 @@ async function loadDepts() {
   try {
     const res = await api.getDepts({ page: 1, page_size: 100 })
     const list = res.data?.list || res.data || []
-    deptOptions.value = (Array.isArray(list) ? list : []).map((d) => ({ label: d.name, value: d.id }))
+    deptOptions.value = (Array.isArray(list) ? list : []).map((d) => ({
+      label: d.name,
+      value: d.id,
+    }))
   } catch (_) {
     deptOptions.value = []
   }
@@ -123,7 +126,11 @@ const columns = [
     width: 90,
     align: 'center',
     render: (row) =>
-      h(NTag, { type: row.status === 1 ? 'warning' : 'success', size: 'small' }, () => statusMap[row.status] || row.status),
+      h(
+        NTag,
+        { type: row.status === 1 ? 'warning' : 'success', size: 'small' },
+        () => statusMap[row.status] || row.status
+      ),
   },
   {
     title: '操作',
@@ -143,13 +150,22 @@ const lineColumns = [
     width: 80,
     render: (row) => bookStatus[row.book_status] || row.book_status,
   },
-  { title: '账面领用人', key: 'book_owner_name', width: 100, render: (row) => row.book_owner_name || '-' },
+  {
+    title: '账面领用人',
+    key: 'book_owner_name',
+    width: 100,
+    render: (row) => row.book_owner_name || '-',
+  },
   {
     title: '结果',
     key: 'result',
     width: 80,
     render: (row) =>
-      h(NTag, { type: resultTag[row.result] || 'default', size: 'small' }, () => resultMap[row.result] ?? row.result),
+      h(
+        NTag,
+        { type: resultTag[row.result] || 'default', size: 'small' },
+        () => resultMap[row.result] ?? row.result
+      ),
   },
   {
     title: '操作',
@@ -158,9 +174,26 @@ const lineColumns = [
     render: (row) => {
       if (!canCount() || currentSession.value?.status !== 1) return null
       return [
-        h(NButton, { size: 'small', type: 'primary', onClick: () => submitCount(row, 'found') }, () => '相符'),
-        h(NButton, { size: 'small', type: 'error', style: 'margin-left:6px', onClick: () => submitCount(row, 'missing') }, () => '盘亏'),
-        h(NButton, { size: 'small', style: 'margin-left:6px', onClick: () => submitCount(row, 'mismatch') }, () => '不符'),
+        h(
+          NButton,
+          { size: 'small', type: 'primary', onClick: () => submitCount(row, 'found') },
+          () => '相符'
+        ),
+        h(
+          NButton,
+          {
+            size: 'small',
+            type: 'error',
+            style: 'margin-left:6px',
+            onClick: () => submitCount(row, 'missing'),
+          },
+          () => '盘亏'
+        ),
+        h(
+          NButton,
+          { size: 'small', style: 'margin-left:6px', onClick: () => submitCount(row, 'mismatch') },
+          () => '不符'
+        ),
       ]
     },
   },
@@ -173,18 +206,25 @@ const lineColumns = [
       <NButton v-if="canStart()" type="primary" @click="openStart">发起盘点</NButton>
     </template>
     <p class="inv-hint">对账账面资产。盘盈请去资产管理里登记新资产；盘亏只记录，不会自动报废。</p>
-    <CrudTable ref="$table" v-model:query-items="queryItems" :columns="columns" :get-data="api.getInventoryList">
-      <QueryBarItem label="状态" label-width="50">
-        <NSelect
-          v-model:value="queryItems.status"
-          :options="[
-            { label: '全部', value: 0 },
-            { label: '进行中', value: 1 },
-            { label: '已结束', value: 2 },
-          ]"
-          style="width: 120px"
-        />
-      </QueryBarItem>
+    <CrudTable
+      ref="$table"
+      v-model:query-items="queryItems"
+      :columns="columns"
+      :get-data="api.getInventoryList"
+    >
+      <template #queryBar>
+        <QueryBarItem label="状态" label-width="50">
+          <NSelect
+            v-model:value="queryItems.status"
+            :options="[
+              { label: '全部', value: 0 },
+              { label: '进行中', value: 1 },
+              { label: '已结束', value: 2 },
+            ]"
+            style="width: 120px"
+          />
+        </QueryBarItem>
+      </template>
     </CrudTable>
 
     <NModal v-model:show="startVisible" preset="card" title="发起盘点" style="width: 420px">
@@ -202,7 +242,12 @@ const lineColumns = [
           />
         </NFormItem>
         <NFormItem v-if="startForm.scope === 'dept'" label="部门">
-          <NSelect v-model:value="startForm.dept_id" :options="deptOptions" placeholder="选择部门" clearable />
+          <NSelect
+            v-model:value="startForm.dept_id"
+            :options="deptOptions"
+            placeholder="选择部门"
+            clearable
+          />
         </NFormItem>
         <NFormItem label="备注">
           <NInput v-model:value="startForm.note" type="textarea" :rows="2" maxlength="255" />
@@ -214,28 +259,46 @@ const lineColumns = [
       </template>
     </NModal>
 
-    <NModal v-model:show="linesVisible" preset="card" :title="currentSession?.title || '盘点明细'" style="width: 920px">
+    <NModal
+      v-model:show="linesVisible"
+      preset="card"
+      :title="currentSession?.title || '盘点明细'"
+      style="width: 920px"
+    >
       <p v-if="summary" class="inv-sum">
-        共 {{ summary.total }} · 未盘 {{ summary.pending }} · 相符 {{ summary.found }} · 盘亏 {{ summary.missing }} · 不符 {{ summary.mismatch }}
+        共 {{ summary.total }} · 未盘 {{ summary.pending }} · 相符 {{ summary.found }} · 盘亏
+        {{ summary.missing }} · 不符 {{ summary.mismatch }}
       </p>
-      <CrudTable ref="$lines" v-model:query-items="lineQuery" :columns="lineColumns" :get-data="api.getInventoryLines">
-        <QueryBarItem label="结果" label-width="50">
-          <NSelect
-            v-model:value="lineQuery.result"
-            :options="[
-              { label: '全部', value: '' },
-              { label: '未盘', value: 'pending' },
-              { label: '相符', value: 'found' },
-              { label: '盘亏', value: 'missing' },
-              { label: '不符', value: 'mismatch' },
-            ]"
-            style="width: 120px"
-          />
-        </QueryBarItem>
+      <CrudTable
+        ref="$lines"
+        v-model:query-items="lineQuery"
+        :columns="lineColumns"
+        :get-data="api.getInventoryLines"
+      >
+        <template #queryBar>
+          <QueryBarItem label="结果" label-width="50">
+            <NSelect
+              v-model:value="lineQuery.result"
+              :options="[
+                { label: '全部', value: '' },
+                { label: '未盘', value: 'pending' },
+                { label: '相符', value: 'found' },
+                { label: '盘亏', value: 'missing' },
+                { label: '不符', value: 'mismatch' },
+              ]"
+              style="width: 120px"
+            />
+          </QueryBarItem>
+        </template>
       </CrudTable>
       <template #footer>
         <NButton @click="linesVisible = false">关闭</NButton>
-        <NButton v-if="canClose() && currentSession?.status === 1" type="primary" @click="submitClose">结束盘点</NButton>
+        <NButton
+          v-if="canClose() && currentSession?.status === 1"
+          type="primary"
+          @click="submitClose"
+          >结束盘点</NButton
+        >
       </template>
     </NModal>
   </CommonPage>

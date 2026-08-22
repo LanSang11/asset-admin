@@ -8,6 +8,7 @@ from app.core.ctx import CTX_USER_ID
 from app.models.admin import User
 from app.models.business import Employee
 from app.schemas.employees import EmployeeCreate, EmployeeUpdate
+from app.services.employee_query import build_employee_filter, resolve_employee_order
 from app.utils.identity import resolve_biz_role
 
 
@@ -28,7 +29,14 @@ class EmployeeController(CRUDBase[Employee, EmployeeCreate, EmployeeUpdate]):
                 raise HTTPException(status_code=400, detail="绑定的登录账号不存在")
 
     async def list_employees(
-        self, page: int, page_size: int, keyword: str = "", dept_id: int = 0, status: int = -1
+        self,
+        page: int,
+        page_size: int,
+        keyword: str = "",
+        dept_id: int = 0,
+        status: int = -1,
+        sort_by: str = "created_at",
+        sort_order: str = "desc",
     ) -> Tuple[int, List[Employee]]:
         """ISO-B2 行级：admin 全员；manager 本部门；employee 仅本人。"""
         user_id = CTX_USER_ID.get()
@@ -36,12 +44,7 @@ class EmployeeController(CRUDBase[Employee, EmployeeCreate, EmployeeUpdate]):
         me = await Employee.filter(user_id=user_id).first()
         role = await resolve_biz_role(user, me)
 
-        q = Q()
-        if keyword:
-            # 修复：Q 表达式加括号（& 优先级高于 |，原写法让部门/状态筛选被 OR 稀释）
-            q &= (Q(name__icontains=keyword) | Q(emp_no__icontains=keyword) | Q(phone__icontains=keyword))
-        if status in (0, 1):
-            q &= Q(status=status)
+        q = build_employee_filter(keyword, 0, status)
 
         if role == "admin":
             if dept_id:
@@ -54,7 +57,7 @@ class EmployeeController(CRUDBase[Employee, EmployeeCreate, EmployeeUpdate]):
         else:
             return 0, []
 
-        return await self.list(page, page_size, q, ["-created_at"])
+        return await self.list(page, page_size, q, [resolve_employee_order(sort_by, sort_order)])
 
     async def serialize_for_viewer(
         self, emp: Employee, role: str, viewer_emp: Optional[Employee]

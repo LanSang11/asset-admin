@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from app.controllers.employee import employee_controller
@@ -21,10 +23,14 @@ async def list_employee(
     keyword: str = Query("", description="搜索关键词（姓名/工号/手机）"),
     dept_id: int = Query(0, description="部门ID"),
     status: int = Query(-1, description="状态：-1全部 1在职 0离职"),
+    sort_by: Literal["created_at", "emp_no", "name", "hire_date"] = Query("created_at"),
+    sort_order: Literal["desc", "asc"] = Query("desc"),
 ):
     # 修复：分页参数与前端 CrudTable 契约统一
     # ISO-B2：行级缩圈 + 字段脱敏
-    total, items = await employee_controller.list_employees(page, page_size, keyword, dept_id, status)
+    total, items = await employee_controller.list_employees(
+        page, page_size, keyword, dept_id, status, sort_by, sort_order
+    )
     user_id = CTX_USER_ID.get()
     user = await User.get(id=user_id)
     me = await Employee.filter(user_id=user_id).first()

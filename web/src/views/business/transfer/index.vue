@@ -69,7 +69,11 @@ function openApply() {
 }
 
 async function submitApply() {
-  if (!applyForm.value.asset_id || !applyForm.value.to_employee_id || !applyForm.value.reason?.trim()) {
+  if (
+    !applyForm.value.asset_id ||
+    !applyForm.value.to_employee_id ||
+    !applyForm.value.reason?.trim()
+  ) {
     $message.warning('请选择资产、调入人并填写说明')
     return
   }
@@ -127,7 +131,11 @@ const columns = [
     width: 120,
     align: 'center',
     render: (row) =>
-      h(NTag, { type: statusTagType[row.status] || 'default', size: 'small' }, () => statusMap[row.status] || row.status),
+      h(
+        NTag,
+        { type: statusTagType[row.status] || 'default', size: 'small' },
+        () => statusMap[row.status] || row.status
+      ),
   },
   {
     title: '操作',
@@ -137,11 +145,20 @@ const columns = [
     render: (row) => {
       if (!canApprove() || (row.status !== 1 && row.status !== 2)) return null
       return [
-        h(NButton, { size: 'small', type: 'primary', onClick: () => openApprove(row, true) }, () => '通过'),
         h(
           NButton,
-          { size: 'small', type: 'error', style: 'margin-left:6px', onClick: () => openApprove(row, false) },
-          () => '驳回',
+          { size: 'small', type: 'primary', onClick: () => openApprove(row, true) },
+          () => '通过'
+        ),
+        h(
+          NButton,
+          {
+            size: 'small',
+            type: 'error',
+            style: 'margin-left:6px',
+            onClick: () => openApprove(row, false),
+          },
+          () => '驳回'
         ),
       ]
     },
@@ -160,26 +177,38 @@ const columns = [
       :columns="columns"
       :get-data="api.getAssetTransferList"
     >
-      <QueryBarItem label="范围" label-width="50">
-        <NSelect
-          v-model:value="queryItems.scope"
-          :options="[
-            { label: '默认', value: 'all' },
-            { label: '我的', value: 'mine' },
-            { label: '待我审', value: 'pending' },
-          ]"
-          style="width: 120px"
-        />
-      </QueryBarItem>
+      <template #queryBar>
+        <QueryBarItem label="范围" label-width="50">
+          <NSelect
+            v-model:value="queryItems.scope"
+            :options="[
+              { label: '默认', value: 'all' },
+              { label: '我的', value: 'mine' },
+              { label: '待我审', value: 'pending' },
+            ]"
+            style="width: 120px"
+          />
+        </QueryBarItem>
+      </template>
     </CrudTable>
 
     <NModal v-model:show="applyVisible" preset="card" title="申请调拨" style="width: 420px">
       <NForm>
         <NFormItem label="资产">
-          <NSelect v-model:value="applyForm.asset_id" :options="assetOptions" filterable placeholder="选择在用资产" />
+          <NSelect
+            v-model:value="applyForm.asset_id"
+            :options="assetOptions"
+            filterable
+            placeholder="选择在用资产"
+          />
         </NFormItem>
         <NFormItem label="调入人">
-          <NSelect v-model:value="applyForm.to_employee_id" :options="employeeOptions" filterable placeholder="选择调入员工" />
+          <NSelect
+            v-model:value="applyForm.to_employee_id"
+            :options="employeeOptions"
+            filterable
+            placeholder="选择调入员工"
+          />
         </NFormItem>
         <NFormItem label="说明">
           <NInput v-model:value="applyForm.reason" type="textarea" :rows="3" maxlength="255" />
