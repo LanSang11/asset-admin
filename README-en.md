@@ -9,9 +9,21 @@
 </p>
 
 <p align="center">
+  <img alt="Python 3.11" src="https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white">
+  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-0.111-009688?logo=fastapi&logoColor=white">
+  <img alt="Vue 3" src="https://img.shields.io/badge/Vue-3-42b883?logo=vuedotjs&logoColor=white">
+  <img alt="Naive UI" src="https://img.shields.io/badge/Naive%20UI-2-36ad6a">
+  <img alt="License MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg">
+</p>
+
+<p align="center">
   <a href="./README.md">简体中文</a>
   ·
   <a href="./README-部署与使用教程.md">Deployment Guide</a>
+  ·
+  <a href="./PROJECT-JOURNEY-en.md">Project Journey</a>
+  ·
+  <a href="./SECURITY.md">Security</a>
   ·
   <a href="./LICENSE">MIT License</a>
 </p>
@@ -59,6 +71,20 @@ The diagram is a map of the current code, not a runtime dependency or a limit on
 - **Workflows:** checkout/return, approval, transfer, repair, and inventory reconciliation.
 - **Supporting services:** dashboard, notifications, warranty attention, import/export, local knowledge base, optional AI adapters, and security operations.
 - **Storage:** `db/db.sqlite3` for runtime business data and `db/rag.sqlite3` for knowledge-base data. Both are ignored runtime artifacts rather than repository content.
+
+## How the project evolved
+
+The system progressed through four connected stages: foundation, API contracts, role and data isolation, and integrated delivery. The original engineering notebook contains **42 real records** rather than 42 invented standalone bugs. Three documentation and feature fixes brought the public-showcase stage to 45 records, rendering QA brought it to 46, and the final public-history audit brings this release to **47 records**.
+
+![From runnable to deliverable: project challenge map](deploy/sample-picture/project-challenge-map.png)
+
+The most representative recent correction restored visible query controls and aligned the employee list with CSV export. The same keyword, department, status, field allowlist, and sort direction now reach both paths.
+
+| Before: controls mounted outside the named slot | After: visible filters backed by the real request contract |
+|---|---|
+| ![Employee filters before the fix](deploy/sample-picture/screenshots/employees-before-filter-fix.png) | ![Employee filters after the fix](deploy/sample-picture/screenshots/employees-filter-and-sort.png) |
+
+The complete four-stage map, 12 representative cases, tool-versus-human judgment boundary, verified gates, and sanitized 42-record baseline are documented in [`PROJECT-JOURNEY-en.md`](./PROJECT-JOURNEY-en.md).
 
 ## Typical workflow
 
@@ -127,6 +153,14 @@ Upload UTF-8 `.txt` or `.md` instructions, ask questions, and review citations. 
 The security center summarizes sign-in events, risk labels, verification policies, bans, and certificate status. QR codes open an asset-number detail route while preserving role-based data access.
 
 The full 18-image walkthrough, including user/role management and personal assets, is available in the [Chinese README](./README.md).
+
+## Permission and security boundaries
+
+- Role-specific navigation is backed by server-side API, row, and field checks.
+- **The sign-in slider is always required.** Superuser TOTP and operation-specific step-up verification follow their role and policy rules.
+- First-time superuser authenticator setup is part of the security baseline; database edits are not an operating shortcut for disabling it.
+- AI and knowledge-base integrations ship without provider credentials. Runtime databases, uploaded files, and local keys remain outside Git.
+- The security center supports review and audit; it complements HTTPS, reverse-proxy controls, host firewall rules, and backups.
 
 ## Quick start
 
