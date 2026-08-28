@@ -21,8 +21,6 @@
   ·
   <a href="./README-部署与使用教程.md">Deployment Guide</a>
   ·
-  <a href="./PROJECT-JOURNEY-en.md">Project Journey</a>
-  ·
   <a href="./SECURITY.md">Security</a>
   ·
   <a href="./LICENSE">MIT License</a>
@@ -71,20 +69,6 @@ The diagram is a map of the current code, not a runtime dependency or a limit on
 - **Workflows:** checkout/return, approval, transfer, repair, and inventory reconciliation.
 - **Supporting services:** dashboard, notifications, warranty attention, import/export, local knowledge base, optional AI adapters, and security operations.
 - **Storage:** `db/db.sqlite3` for runtime business data and `db/rag.sqlite3` for knowledge-base data. Both are ignored runtime artifacts rather than repository content.
-
-## How the project evolved
-
-The system progressed through four connected stages: foundation, API contracts, role and data isolation, and integrated delivery. The original engineering notebook contains **42 real records** rather than 42 invented standalone bugs. Three documentation and feature fixes brought the public-showcase stage to 45 records, rendering QA brought it to 46, and the final public-history audit brings this release to **47 records**.
-
-![From runnable to deliverable: project challenge map](deploy/sample-picture/project-challenge-map.png)
-
-The most representative recent correction restored visible query controls and aligned the employee list with CSV export. The same keyword, department, status, field allowlist, and sort direction now reach both paths.
-
-| Before: controls mounted outside the named slot | After: visible filters backed by the real request contract |
-|---|---|
-| ![Employee filters before the fix](deploy/sample-picture/screenshots/employees-before-filter-fix.png) | ![Employee filters after the fix](deploy/sample-picture/screenshots/employees-filter-and-sort.png) |
-
-The complete four-stage map, 12 representative cases, tool-versus-human judgment boundary, verified gates, and sanitized 42-record baseline are documented in [`PROJECT-JOURNEY-en.md`](./PROJECT-JOURNEY-en.md).
 
 ## Typical workflow
 
