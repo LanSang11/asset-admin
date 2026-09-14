@@ -21,6 +21,8 @@
   ·
   <a href="./README-部署与使用教程.md">部署与使用教程</a>
   ·
+  <a href="./CHANGELOG.md">更新记录</a>
+  ·
   <a href="./SECURITY.md">安全说明</a>
   ·
   <a href="./LICENSE">MIT License</a>

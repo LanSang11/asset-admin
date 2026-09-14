@@ -21,6 +21,8 @@
   ·
   <a href="./README-部署与使用教程.md">Deployment Guide</a>
   ·
+  <a href="./CHANGELOG.md">Changelog</a>
+  ·
   <a href="./SECURITY.md">Security</a>
   ·
   <a href="./LICENSE">MIT License</a>
