@@ -1,11 +1,11 @@
-# Changelog
+# 更新记录
 
-Public, sanitized notes only. Internal runbooks, server paths, IPs, and secrets never belong here.
+这里只写「这次修了什么」。服务器地址、密钥、内部文档不写进来。
 
 ## 2026-09-14
 
-- **SECRET_KEY rotation vs TOTP**: If `user.totp_secret` is stored as `enc:v1:` ciphertext derived from `SECRET_KEY`, rotating the key without re-encrypting that column makes login treat a bound authenticator as missing. A superuser can then pass password + captcha, skip the 6-digit code, and get stuck in a security-setup session whose UI still says TOTP is enabled (no re-bind button). Fix: decrypt with the previous key, encrypt with the new key, then log in again with the **existing** authenticator. Product source code was unchanged.
+- **换登录主密钥之后，动态验证密文也要一起换加密。** 动态验证密钥是按当时的主密钥加密存库的。只换主密钥、不重加密这一列，系统会当成「没绑定」。超级管理员用密码就能进，但进不去业务页，个人资料却显示「已启用」。正确做法：用旧主密钥解开，再用新主密钥存回去，然后用手机里原来的 6 位码重新登录。不必重新扫码。业务程序代码没有改。
 
 ## 2026-08-22
 
-- Public documentation and gallery refresh (`31f5e0d`). See `PROJECT-JOURNEY.md`.
+- 公开说明和功能截图整理。详见 `PROJECT-JOURNEY.md`。
