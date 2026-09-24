@@ -29,9 +29,13 @@ if __name__ == "__main__":
     if forwarded_allow_ips.strip() == "*":
         forwarded_allow_ips = "127.0.0.1"
 
+    # 监听地址：默认只绑 127.0.0.1（与部署教程「默认只监听本机」一致，防局域网裸奔）。
+    # 容器内 nginx 同机反代 127.0.0.1:9999，无需改动；确需局域网直连时显式设 ASSET_HOST=0.0.0.0。
+    host_flag = os.getenv("ASSET_HOST", "127.0.0.1").strip() or "127.0.0.1"
+
     uvicorn.run(
         "app:app",
-        host="0.0.0.0",
+        host=host_flag,
         port=9999,
         reload=reload_flag,
         proxy_headers=proxy_headers_flag,

@@ -68,6 +68,10 @@ class Settings(BaseSettings):
     PROJECT_ROOT: str = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
     BASE_DIR: str = os.path.abspath(os.path.join(PROJECT_ROOT, os.pardir))
     LOGS_ROOT: str = os.path.join(BASE_DIR, "app/logs")
+    # 全新部署首次启动：db/ 目录被 .gitignore 排除、不存在于仓库，
+    # 而 SQLite 需要父目录存在才能建库文件。导入配置时幂等创建，
+    # 保证 git clone 后 `python run.py` 开箱即用（2026-09-24 初始化审计修复）。
+    os.makedirs(os.path.join(BASE_DIR, "db"), exist_ok=True)
     # 密钥来源：环境变量 SECRET_KEY（生产推荐）或 .secret_key 文件（secrets 随机生成并持久化）。
     # 无硬编码默认值——固定默认值可被公开源码利用伪造 JWT / 解密用户 API Key。
     SECRET_KEY: str = _load_or_create_secret(

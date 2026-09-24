@@ -186,6 +186,7 @@ npm run build
 | `SECRET_KEY` | JWT 签名与 API Key 加密密钥（生产强烈建议设置） | 自动生成到 `.secret_key` 文件 |
 | `SHOW_DOCS` | 是否开放 Swagger 接口文档（`1` 开启） | 关闭（更安全） |
 | `CORS_ORIGINS` | 跨域白名单（JSON 数组字符串） | `["http://127.0.0.1:9999","http://localhost:9999"]` |
+| `ASSET_HOST` | 后端监听地址 | `127.0.0.1`（只本机可访问；容器内 nginx 同机反代，无需改动；确需局域网直连再设 `0.0.0.0`） |
 
 示例（Docker 部署时传入）：
 ```bash
