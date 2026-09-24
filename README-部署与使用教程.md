@@ -115,8 +115,8 @@ cd 项目根目录
 python -m venv venv
 venv\Scripts\activate
 
-# 3. 安装后端依赖（使用清华镜像加速）
-pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+# 3. 安装后端依赖（清华镜像加速；若提示找不到某个包，改用官方源重跑一次）
+pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple --extra-index-url https://pypi.org/simple
 
 # 4. 启动后端（终端 1）
 python run.py
@@ -137,7 +137,7 @@ npm run dev    # 打开 http://127.0.0.1:3100 （已配置代理到后端 9999�
 cd 项目根目录
 python3 -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple --extra-index-url https://pypi.org/simple
 python run.py &
 
 cd web
