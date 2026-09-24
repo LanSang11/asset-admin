@@ -7,13 +7,16 @@ import { dirname, resolve } from 'node:path'
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..')
 const read = (path) => readFileSync(resolve(repoRoot, path), 'utf8')
 
-test('安全中心有限时验收模式：开启要动态码，关闭不改高危策略', () => {
+test('安全中心有临时免登录动态码：开启要动态码，关闭不改高危策略', () => {
   const page = read('web/src/views/system/security/index.vue')
-  assert.match(page, /限时验收模式/)
+  assert.match(page, /临时免登录动态码/)
   assert.match(page, /acceptance_mode_update/)
-  assert.match(page, /updateAcceptanceMode\(\{ enabled: true \}/)
+  assert.match(page, /验证动态码并开启\/重新计时/)
+  assert.match(page, /updateAcceptanceMode\(\{ enabled: true, duration_minutes \}/)
   assert.match(page, /updateAcceptanceMode\(\{ enabled: false \}/)
   assert.match(page, /逐项验证和根保护/)
+  assert.match(page, /固定开启/)
+  assert.doesNotMatch(page, /NSwitch/)
   assert.doesNotMatch(page, /关[闭掉]二次验证/)
 })
 
@@ -27,10 +30,11 @@ test('安全中心可查看 HTTPS 证书并点续签', () => {
   assert.match(api, /\/security\/tls/)
 })
 
-test('管理壳在开启验收模式时显示到期横幅', () => {
+test('管理壳在开启临时免登录动态码时显示到期横幅', () => {
   const layout = read('web/src/layout/index.vue')
   const banner = read('web/src/layout/components/AcceptanceModeBanner.vue')
   assert.match(layout, /AcceptanceModeBanner/)
   assert.match(banner, /acceptance_mode/)
+  assert.match(banner, /临时免登录动态码已开启/)
   assert.match(banner, /到期自动恢复/)
 })

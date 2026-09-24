@@ -93,7 +93,7 @@ class TestTruncateSensitive(unittest.TestCase):
     def test_nested_sensitive_keys_masked(self):
         data = {
             "user": {"password": "MySecret@123", "name": "张三"},
-            "payload": {"nested": {"api_key": "sk-abcdef"}},
+            "payload": {"nested": {"api_key": "test-key-abcdef"}},
             "NewPassword": "Abc@12345",
         }
         result = truncate_sensitive(data)
@@ -103,7 +103,7 @@ class TestTruncateSensitive(unittest.TestCase):
         self.assertEqual(result["NewPassword"], "***")  # 大小写不敏感
 
     def test_sensitive_key_in_list(self):
-        data = {"messages": [{"role": "user", "content": "hi"}, {"secret": "sk-xyz"}]}
+        data = {"messages": [{"role": "user", "content": "hi"}, {"secret": "test-key-xyz"}]}
         result = truncate_sensitive(data)
         self.assertEqual(result["messages"][1]["secret"], "***")
         self.assertEqual(result["messages"][0]["content"], "hi")

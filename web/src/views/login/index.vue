@@ -16,51 +16,60 @@
           <TypewriterTitle :text="titleText" />
         </div>
 
-        <div class="login-field">
-          <n-input
-            v-model:value="loginInfo.username"
-            autofocus
-            class="h-50 items-center pl-10 text-16"
-            placeholder="请输入用户名"
-            :maxlength="20"
-          />
-        </div>
-        <div class="login-field">
-          <n-input
-            v-model:value="loginInfo.password"
-            class="h-50 items-center pl-10 text-16"
-            type="password"
-            show-password-on="mousedown"
-            placeholder="请输入密码"
-            :maxlength="20"
-            @keypress.enter="handleLogin"
-          />
-        </div>
+        <template v-if="!needTotp && !recoveryMode">
+          <div class="login-field">
+            <n-input
+              v-model:value="loginInfo.username"
+              autofocus
+              class="h-50 items-center pl-10 text-16"
+              placeholder="请输入用户名"
+              :maxlength="20"
+            />
+          </div>
+          <div class="login-field">
+            <n-input
+              v-model:value="loginInfo.password"
+              class="h-50 items-center pl-10 text-16"
+              type="password"
+              show-password-on="mousedown"
+              placeholder="请输入密码"
+              :maxlength="20"
+              @keypress.enter="handleLogin"
+            />
+          </div>
+          <div class="login-field login-field--captcha">
+            <SlideCaptcha
+              :reset-key="captchaResetKey"
+              @solved="onCaptchaSolved"
+              @cleared="onCaptchaCleared"
+            />
+          </div>
+        </template>
 
-        <!-- 严格：每次登录必须滑块 -->
-        <div class="login-field login-field--captcha">
-          <SlideCaptcha
-            :reset-key="captchaResetKey"
-            @solved="onCaptchaSolved"
-            @cleared="onCaptchaCleared"
-          />
-        </div>
+        <template v-else-if="needTotp && !recoveryMode">
+          <div class="login-field login-field--totp">
+            <div class="totp-step-hint">请输入验证器中的 6 位动态码</div>
+            <div class="totp-account">账号 {{ loginInfo.username }}</div>
+            <n-input
+              ref="totpInputRef"
+              v-model:value="totpCode"
+              class="h-50 items-center pl-10 text-16"
+              placeholder="6 位动态码"
+              :maxlength="6"
+              :allow-input="(value) => /^\d*$/.test(value)"
+              inputmode="numeric"
+              @paste="onTotpPaste"
+              @keypress.enter="handleLogin"
+            />
+          </div>
+          <div v-if="recoveryQuestion" class="login-field recovery-action">
+            <n-button text type="primary" @click="startRecovery"
+              >丢失验证器？使用安全问题恢复</n-button
+            >
+          </div>
+        </template>
 
-        <!-- 零成本 TOTP：密码+滑块通过后才出现，不当失败 -->
-        <div v-if="needTotp" class="login-field login-field--totp">
-          <div class="totp-step-hint">密码已通过。请输入验证器中的 6 位动态码，并重新完成滑块。</div>
-          <n-input
-            v-model:value="totpCode"
-            class="h-50 items-center pl-10 text-16"
-            placeholder="验证器 6 位动态码"
-            :maxlength="6"
-            :allow-input="(value) => /^\d*$/.test(value)"
-            inputmode="numeric"
-            @keypress.enter="handleLogin"
-          />
-        </div>
-
-        <template v-if="recoveryMode">
+        <template v-else>
           <div class="login-field recovery-question">{{ recoveryQuestion }}</div>
           <div class="login-field">
             <n-input
@@ -73,14 +82,17 @@
               @keypress.enter="handleLogin"
             />
           </div>
+          <div class="login-field login-field--captcha">
+            <SlideCaptcha
+              :reset-key="captchaResetKey"
+              @solved="onCaptchaSolved"
+              @cleared="onCaptchaCleared"
+            />
+          </div>
+          <div class="login-field recovery-action">
+            <n-button text @click="cancelRecovery">返回动态验证码登录</n-button>
+          </div>
         </template>
-
-        <div v-if="needTotp && recoveryQuestion && !recoveryMode" class="login-field recovery-action">
-          <n-button text type="primary" @click="startRecovery">丢失验证器？使用安全问题恢复</n-button>
-        </div>
-        <div v-if="recoveryMode" class="login-field recovery-action">
-          <n-button text @click="cancelRecovery">返回动态验证码登录</n-button>
-        </div>
 
         <div class="login-field login-field--submit">
           <n-button
@@ -92,8 +104,11 @@
             :loading="loading"
             @click="handleLogin"
           >
-            {{ needTotp ? '验证并登录' : $t('views.login.text_login') }}
+            {{ needTotp || recoveryMode ? '验证并登录' : $t('views.login.text_login') }}
           </n-button>
+        </div>
+        <div v-if="needTotp || recoveryMode" class="login-field recovery-action">
+          <n-button text @click="backToPassword">返回重新登录</n-button>
         </div>
 
         <details v-if="needTotp" class="login-auth-dl">
@@ -106,7 +121,7 @@
 </template>
 
 <script setup>
-import { lStorage, setToken, getHomePath, canWorkUserAccessPath, resolvePortal, isAdminLandingPath } from '@/utils'
+import { lStorage, setToken, resolvePortal, resolvePostLoginLocation } from '@/utils'
 import api from '@/api'
 import { addDynamicRoutes } from '@/router'
 import { useUserStore } from '@/store'
@@ -123,7 +138,7 @@ const BASE_URL = import.meta.env.BASE_URL || '/'
 const titleText = '资产管理系统'
 
 const router = useRouter()
-const { query } = useRoute()
+const route = useRoute()
 const { t } = useI18n({ useScope: 'global' })
 
 const loginInfo = ref({
@@ -135,9 +150,12 @@ const captchaResetKey = ref(0)
 const captchaPayload = ref(null)
 const needTotp = ref(false)
 const totpCode = ref('')
+const loginChallenge = ref('')
+const totpInputRef = ref(null)
 const recoveryMode = ref(false)
 const recoveryQuestion = ref('')
 const recoveryAnswer = ref('')
+let verifyMsg = null
 
 initLoginInfo()
 
@@ -162,6 +180,28 @@ function refreshCaptcha() {
   captchaResetKey.value += 1
 }
 
+function stopVerifyMsg() {
+  try {
+    verifyMsg?.destroy?.()
+  } catch (e) {
+    /* ignore */
+  }
+  verifyMsg = null
+}
+
+function resetTotpStep() {
+  loginChallenge.value = ''
+  needTotp.value = false
+  totpCode.value = ''
+}
+
+function backToPassword() {
+  resetTotpStep()
+  recoveryMode.value = false
+  recoveryAnswer.value = ''
+  refreshCaptcha()
+}
+
 function startRecovery() {
   recoveryMode.value = true
   needTotp.value = false
@@ -172,9 +212,49 @@ function startRecovery() {
 
 function cancelRecovery() {
   recoveryMode.value = false
-  needTotp.value = true
   recoveryAnswer.value = ''
-  refreshCaptcha()
+  needTotp.value = true
+}
+
+function onTotpPaste(e) {
+  const text = e?.clipboardData?.getData?.('text') || ''
+  const digits = String(text).replace(/\D/g, '').slice(0, 6)
+  if (!digits) return
+  e.preventDefault()
+  totpCode.value = digits
+}
+
+async function enterTotpStep(challenge, question) {
+  needTotp.value = true
+  loginChallenge.value = challenge
+  recoveryMode.value = false
+  recoveryQuestion.value = question || ''
+  totpCode.value = ''
+  await nextTick()
+  totpInputRef.value?.focus?.()
+}
+
+function locationHref(target) {
+  if (typeof target === 'string') return target
+  const params = new URLSearchParams()
+  Object.entries(target.query || {}).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return
+    params.set(key, String(value))
+  })
+  const search = params.toString()
+  return search ? `${target.path}?${search}` : target.path
+}
+
+async function leaveLogin(target) {
+  try {
+    await router.replace(target)
+  } catch (e) {
+    console.error('login redirect', e)
+  }
+  await nextTick()
+  if (router.currentRoute.value.path === '/login') {
+    window.location.assign(locationHref(target))
+  }
 }
 
 function collectDeviceProfile() {
@@ -205,13 +285,19 @@ async function handleLogin() {
     $message.warning(t('views.login.message_input_username_password'))
     return
   }
-  if (!captchaPayload.value?.captcha_ticket) {
+  const canSkipCaptcha = Boolean(needTotp.value && loginChallenge.value)
+  if (!canSkipCaptcha && !captchaPayload.value?.captcha_ticket) {
     $message.warning('请先完成滑块验证')
+    return
+  }
+  if (needTotp.value && !recoveryMode.value && !String(totpCode.value || '').trim()) {
+    $message.warning('请输入验证器 6 位动态码')
     return
   }
   try {
     loading.value = true
-    $message.loading(t('views.login.message_verifying'))
+    stopVerifyMsg()
+    verifyMsg = $message.loading(t('views.login.message_verifying'))
     if (recoveryMode.value) {
       if (!recoveryAnswer.value) {
         $message.warning('请输入安全问题答案')
@@ -224,21 +310,40 @@ async function handleLogin() {
         captcha_ticket: captchaPayload.value.captcha_ticket,
         ...collectDeviceProfile(),
       })
+      if (!res.data?.access_token) {
+        $message.error('恢复未完成，请重试')
+        refreshCaptcha()
+        return
+      }
       setToken(res.data.access_token)
       $message.success('恢复验证通过，请重新绑定动态验证器')
-      router.replace({ path: '/profile', query: { totpRecovery: '1' } })
+      await leaveLogin({ path: '/profile', query: { totpRecovery: '1' } })
       return
     }
-    const res = await api.login({
+    const loginPayload = {
       username,
       password: password.toString(),
-      captcha_ticket: captchaPayload.value.captcha_ticket,
       totp_code: needTotp.value ? totpCode.value : undefined,
       ...collectDeviceProfile(),
-    })
+    }
+    if (loginChallenge.value) {
+      loginPayload.login_challenge = loginChallenge.value
+    } else {
+      loginPayload.captcha_ticket = captchaPayload.value.captcha_ticket
+    }
+    const res = await api.login(loginPayload)
+    if (res.data?.next_step === 'totp' && res.data?.login_challenge) {
+      await enterTotpStep(res.data.login_challenge, res.data.recovery_question)
+      return
+    }
+    if (!res.data?.access_token) {
+      $message.error('登录未完成，请重试')
+      refreshCaptcha()
+      return
+    }
     $message.success(t('views.login.message_login_success'))
     captchaPayload.value = null
-    needTotp.value = false
+    loginChallenge.value = ''
     totpCode.value = ''
     setToken(res.data.access_token)
     const userStore = useUserStore()
@@ -248,7 +353,7 @@ async function handleLogin() {
       must_change_password: !!res.data.must_change_password,
     })
     if (res.data.security_setup_only || res.data.totp_recovery_only) {
-      router.replace({
+      await leaveLogin({
         path: '/profile',
         query: res.data.totp_recovery_only
           ? { totpRecovery: '1' }
@@ -260,39 +365,31 @@ async function handleLogin() {
       return
     }
     if (res.data.must_change_password) {
-      router.push({ path: '/profile', query: { forceChangePassword: '1' } })
+      await leaveLogin({ path: '/profile', query: { forceChangePassword: '1' } })
       return
     }
     await addDynamicRoutes()
     const portal = resolvePortal(userStore.userInfo)
-    const home = getHomePath(portal)
-    if (query.redirect) {
-      const path = query.redirect
-      Reflect.deleteProperty(query, 'redirect')
-      // work 用户：不可进的路径，以及指向 /workbench 或 / 的 redirect，一律回工作台
-      if (portal === 'work' && (!canWorkUserAccessPath(path) || isAdminLandingPath(path))) {
-        router.push(home)
-      } else {
-        router.push({ path, query })
-      }
-    } else {
-      router.push(home)
-    }
+    await leaveLogin(resolvePostLoginLocation(route.query.redirect, portal))
   } catch (e) {
     console.error('login error', e)
-    // 需要 TOTP 时展示输入框（密码已通过，但 captcha 已消费，须重滑）
     const data = e?.error?.data || e?.error || {}
     const payload = data.data && typeof data.data === 'object' ? data.data : data
-    if (payload.require_totp || data.require_totp) {
+    const challengeExpired = !!(payload.challenge_expired || data.challenge_expired)
+    const challengeFromError = payload.login_challenge || data.login_challenge
+    if (challengeExpired) {
+      backToPassword()
+    } else if (challengeFromError) {
+      await enterTotpStep(challengeFromError, payload.recovery_question || data.recovery_question)
+    } else if ((payload.require_totp || data.require_totp) && loginChallenge.value) {
       needTotp.value = true
       recoveryMode.value = false
       recoveryQuestion.value = payload.recovery_question || data.recovery_question || ''
-      if (payload.totp_challenge || data.totp_challenge) {
-        $message?.info?.('密码已通过，请输入验证器 6 位动态码')
-      }
+    } else {
+      refreshCaptcha()
     }
-    refreshCaptcha()
   } finally {
+    stopVerifyMsg()
     loading.value = false
   }
 }
@@ -372,6 +469,11 @@ async function handleLogin() {
   font-size: 13px;
   line-height: 1.5;
   margin-bottom: 8px;
+}
+.totp-account {
+  color: rgba(226, 232, 240, 0.72);
+  font-size: 13px;
+  margin-bottom: 10px;
 }
 .recovery-question {
   color: rgba(226, 232, 240, 0.86);

@@ -20,7 +20,7 @@
             v-model="draft"
             rows="3"
             maxlength="2000"
-            placeholder="问本页怎么用、操作说明，或你权限内的资产 / 流转"
+            placeholder="只读：问本页怎么用、操作说明，或你权限内的资产 / 流转 / 报修 / 调拨 / 盘点"
             :disabled="sending"
           />
           <button type="submit" :disabled="sending || !draft.trim()">发送</button>
@@ -63,6 +63,9 @@ function cardLabel(card) {
   if (card.kind === 'ip') return card.ip || ''
   if (card.kind === 'filter') return card.tab || ''
   if (card.kind === 'kb') return `《${card.name || ''}》${card.snippet || ''}`
+  if (card.kind === 'repair') return `${card.asset_no || ''} ${card.status_label || ''}`.trim()
+  if (card.kind === 'transfer') return `${card.asset_no || ''} ${card.status_label || ''}`.trim()
+  if (card.kind === 'inventory') return `${card.name || ''} ${card.status_label || ''}`.trim()
   return card.alias || ''
 }
 

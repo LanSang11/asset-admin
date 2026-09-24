@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query, Request
 
-from app.controllers.asset import ASSET_CATEGORIES, asset_controller
+from app.controllers.asset import ASSET_CATEGORIES, EMP_SENSITIVE_FIELDS, asset_controller
 from app.services.warranty import attach_warranty_fields
 from app.core.ctx import CTX_USER_ID
 from app.core.dependency import DependAuth, DependPermission, require_operation
@@ -9,6 +9,7 @@ from app.models.business import Employee
 from app.schemas.base import Success
 from app.schemas.assets import *
 from app.services.security_event_service import log_security_event
+from app.services.field_change_service import list_field_changes
 from app.utils.identity import resolve_biz_role
 from app.utils.request_info import client_ip, device_hash, user_agent
 
@@ -39,16 +40,35 @@ async def list_asset(
 
 @router.get("/get", summary="查看资产", dependencies=[DependAuth])
 async def get_asset(
-    id: int = Query(..., description="资产ID"),
+    id: int | None = Query(None, description="资产ID"),
+    asset_no: str = Query("", max_length=50, description="资产编号（精确匹配）"),
+    include_changes: bool = Query(False),
+    change_page: int = Query(1, ge=1),
+    change_page_size: int = Query(20, ge=1, le=100),
 ):
-    obj = await asset_controller.get(id=id)
+    if id is not None:
+        obj = await asset_controller.get(id=id)
+    elif asset_no.strip():
+        obj = await asset_controller.get_by_asset_no(asset_no.strip())
+        if not obj:
+            raise HTTPException(status_code=404, detail="资产不存在")
+    else:
+        raise HTTPException(status_code=400, detail="请提供资产ID或资产编号")
     user_id = CTX_USER_ID.get()
     user = await User.get(id=user_id)
     emp = await Employee.filter(user_id=user_id).first()
     role = await resolve_biz_role(user, emp)
     if not await asset_controller.can_view_asset(obj, role, emp):
         raise HTTPException(status_code=403, detail="无权查看该资产")
-    return Success(data=await asset_controller.serialize_for_viewer(obj, role, emp))
+    data = await asset_controller.serialize_for_viewer(obj, role, emp)
+    if include_changes is True:
+        excluded = set()
+        if role == "employee" and (not emp or obj.owner_emp_id != emp.id):
+            excluded = set(EMP_SENSITIVE_FIELDS)
+        data["changes"] = await list_field_changes(
+            "asset", obj.id, change_page, change_page_size, excluded_fields=excluded
+        )
+    return Success(data=data)
 
 
 @router.get("/categories", summary="资产分类列表", dependencies=[DependAuth])
@@ -57,7 +77,9 @@ async def list_categories():
 
 
 @router.get("/my", summary="我名下的在用资产（归还申请用）", dependencies=[DependAuth])
-async def my_assets():
+async def my_assets(
+    context: bool = Query(False, description="是否返回扫码动作上下文"),
+):
     # 修复：归还申请需要"我自己名下的在用资产"列表
     # （原前端加载闲置资产，闲置资产无 owner，归还功能永远选不到可归项）
     from app.core.ctx import CTX_USER_ID
@@ -65,6 +87,19 @@ async def my_assets():
 
     user_id = CTX_USER_ID.get()
     emp = await Employee.filter(user_id=user_id).first()
+    if context:
+        has_active_employee = bool(emp and emp.status)
+        own_asset_ids = []
+        if has_active_employee:
+            own_asset_ids = await Asset.filter(owner_emp_id=emp.id, status=1).values_list(
+                "id", flat=True
+            )
+        return Success(
+            data={
+                "has_active_employee": has_active_employee,
+                "own_asset_ids": list(own_asset_ids),
+            }
+        )
     if not emp:
         return Success(data=[])
     # 在用 + 维修中（送修仍挂在名下）

@@ -11,6 +11,12 @@ export function resolveResError(code, message) {
     case 400:
       message = message ?? '请求参数错误'
       break
+    case 409:
+      message = message ?? '数据已存在或与现有记录冲突，请修改后重试'
+      break
+    case 422:
+      message = message ?? '提交内容有误，请按提示修改'
+      break
     case 401:
       message = message ?? '登录已过期'
       break

@@ -14,6 +14,7 @@ from app.models.admin import User
 from app.schemas.base import Fail, Success, SuccessExtra
 from app.schemas.users import *
 from app.services.security_event_service import log_security_event
+from app.utils.crypto import set_totp_secret
 from app.utils.request_info import client_ip, device_hash, user_agent
 
 logger = logging.getLogger(__name__)
@@ -50,12 +51,15 @@ async def list_user(
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(10, ge=1, le=100, description="每页数量（上限 100）"),
     username: str = Query("", description="用户名称，用于搜索"),
+    alias: str = Query("", description="姓名，用于搜索"),
     email: str = Query("", description="邮箱地址"),
     dept_id: int = Query(None, description="部门ID"),
 ):
     q = Q()
     if username:
         q &= Q(username__contains=username)
+    if alias:
+        q &= Q(alias__contains=alias)
     if email:
         q &= Q(email__contains=email)
     if dept_id is not None:
@@ -99,9 +103,10 @@ async def create_user(
         bool(user_in.is_superuser),
         user_in.role_ids or [],
     )
-    user = await user_controller.get_by_email(user_in.email)
-    if user:
+    if await user_controller.get_by_email(user_in.email):
         return Fail(code=400, msg="系统中已存在该邮箱用户")
+    if await user_controller.get_by_username(user_in.username):
+        return Fail(code=400, msg="系统中已存在该用户名称")
     new_user = await user_controller.create_user(obj_in=user_in)
     await user_controller.update_roles(new_user, user_in.role_ids)
     return Success(msg="创建成功")
@@ -125,6 +130,10 @@ async def update_user(
     )
     if target.is_superuser and not current_user.is_superuser:
         raise HTTPException(status_code=403, detail="无权修改超级管理员账号")
+    if await User.filter(email=user_in.email).exclude(id=user_in.id).exists():
+        return Fail(code=400, msg="系统中已存在该邮箱用户")
+    if await User.filter(username=user_in.username).exclude(id=user_in.id).exists():
+        return Fail(code=400, msg="系统中已存在该用户名称")
     demoting = "is_superuser" in user_in.model_fields_set and user_in.is_superuser is False
     disabling = "is_active" in user_in.model_fields_set and user_in.is_active is False
     if target.is_superuser and (demoting or disabling):
@@ -237,7 +246,7 @@ async def reset_totp(
     if user_id == current_user.id:
         raise HTTPException(status_code=400, detail="不能通过管理员接口重置自己的动态验证器")
     target = await user_controller.get(id=user_id)
-    target.totp_secret = None
+    set_totp_secret(target, None)
     target.totp_enabled = False
     target.recovery_question = None
     target.recovery_answer_hash = None
@@ -256,3 +265,29 @@ async def reset_totp(
         success=True,
     )
     return Success(msg="动态验证器已重置，该账号需要重新绑定")
+
+
+@router.post("/force_logout", summary="强制下线")
+async def force_logout(
+    request: Request,
+    user_id: int = Body(..., description="用户ID", embed=True),
+    current_user: User = require_operation("user_update_security"),
+):
+    if not current_user.is_superuser:
+        raise HTTPException(status_code=403, detail="仅超级管理员可强制下线")
+    if user_id == current_user.id:
+        raise HTTPException(status_code=400, detail="不能强制下线当前登录账号")
+    target = await user_controller.get(id=user_id)
+    bump_user_auth_version(target)
+    await target.save(update_fields=["auth_version"])
+    await log_security_event(
+        event_type="force_logout",
+        username=current_user.username,
+        user_id=current_user.id,
+        ip=client_ip(request),
+        user_agent=user_agent(request),
+        device_hash=device_hash(request),
+        detail=f"强制下线 target_id={target.id} target_username={target.username}",
+        success=True,
+    )
+    return Success(msg="已强制下线，该账号需重新登录")

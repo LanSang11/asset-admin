@@ -8,6 +8,8 @@ from app.models.admin import User
 from app.schemas.base import Success
 from app.services.export_service import export_asset_uses, export_assets, export_employees
 from app.services.import_service import import_assets
+from app.services.security_event_service import log_security_event
+from app.utils.request_info import client_ip, device_hash, user_agent
 
 router = APIRouter()
 
@@ -21,6 +23,7 @@ async def _require_admin():
 
 @router.get("/employees", summary="导出员工数据 CSV", dependencies=[DependPermission])
 async def export_employees_csv(
+    request: Request,
     keyword: str = Query("", description="搜索关键词"),
     dept_id: int = Query(0, description="部门ID"),
     status: int = Query(-1, description="状态：-1全部 1在职 0离职"),
@@ -29,7 +32,25 @@ async def export_employees_csv(
     current_user: User = require_operation("export_employees"),
 ):
     await _require_admin()
-    return await export_employees(keyword, dept_id, status, sort_by, sort_order)
+    result = await export_employees(
+        keyword,
+        dept_id,
+        status,
+        sort_by,
+        sort_order,
+        exported_by=current_user.username,
+    )
+    await log_security_event(
+        event_type="employee_export",
+        username=current_user.username,
+        user_id=current_user.id,
+        ip=client_ip(request),
+        user_agent=user_agent(request),
+        device_hash=device_hash(request),
+        detail=f"导出员工数据 rows={result.row_count}",
+        success=True,
+    )
+    return result.response
 
 
 @router.get("/assets", summary="导出资产数据 CSV", dependencies=[DependPermission])

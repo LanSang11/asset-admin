@@ -5,14 +5,18 @@ import { NButton, NForm, NFormItem, NInput, NModal, NSelect, NTag } from 'naive-
 import CommonPage from '@/components/page/CommonPage.vue'
 import QueryBarItem from '@/components/query-bar/QueryBarItem.vue'
 import CrudTable from '@/components/table/CrudTable.vue'
-import { usePermissionStore } from '@/store'
+import { usePermissionStore, useUserStore } from '@/store'
+import { canUseScanAction, resolveScannedAsset } from '@/utils/asset-qr'
 import api from '@/api'
+import { shouldShowLocalError } from '@/utils/http/validation-errors'
 
 defineOptions({ name: '报修管理' })
 
 const $table = ref(null)
 const queryItems = ref({ scope: 'all' })
 const permissionStore = usePermissionStore()
+const userStore = useUserStore()
+const route = useRoute()
 
 const applyVisible = ref(false)
 const applyMode = ref('apply')
@@ -20,6 +24,9 @@ const applyForm = ref({ asset_id: null, reason: '', employee_id: null })
 const applyLoading = ref(false)
 const assetOptions = ref([])
 const employeeOptions = ref([])
+const scanAssetLocked = ref(false)
+const scanAssetLabel = ref('')
+const hasActiveEmployee = ref(false)
 const statusLabel = { 1: '在用', 2: '闲置' }
 
 const approveVisible = ref(false)
@@ -43,20 +50,29 @@ function hasApi(p) {
   return (permissionStore.accessApis || []).includes(p)
 }
 
-const canApply = () => hasApi('post/api/v1/asset-repair/apply')
+const canApply = () => hasActiveEmployee.value && hasApi('post/api/v1/asset-repair/apply')
 const canApprove = () => hasApi('post/api/v1/asset-repair/approve')
 const canComplete = () => hasApi('post/api/v1/asset-repair/complete')
 const canRegister = () => hasApi('post/api/v1/asset-repair/register')
 
-onMounted(() => {
-  $table.value?.handleSearch()
-})
+async function loadActionContext() {
+  try {
+    const res = await api.getAssetActionContext()
+    hasActiveEmployee.value = res.data?.has_active_employee === true
+  } catch (_) {
+    hasActiveEmployee.value = false
+  }
+}
 
-async function loadMyAssets() {
-  const res = await api.getMyAssets()
-  assetOptions.value = (res.data || [])
-    .filter((a) => a.status === 1)
-    .map((a) => ({ label: `${a.asset_no} ${a.name}`, value: a.id }))
+async function loadApplyAssets() {
+  const res = await api.getAssetList({
+    page: 1,
+    page_size: 100,
+    status: 1,
+  })
+  const assets = (res.data?.list || []).filter((a) => a.status === 1)
+  assetOptions.value = assets.map((a) => ({ label: `${a.asset_no} ${a.name}`, value: a.id }))
+  return assets
 }
 
 async function loadRegisterCandidates() {
@@ -83,24 +99,70 @@ function onRegisterAssetChange(id) {
   applyForm.value.employee_id = opt?.owner_emp_id || null
 }
 
-function openApply() {
+async function openApply(scanQuery = null) {
+  if (!canApply()) {
+    if (scanQuery) $message.warning('当前账号没有发起报修的权限。')
+    return
+  }
   applyMode.value = 'apply'
   applyForm.value = { asset_id: null, reason: '', employee_id: null }
-  applyVisible.value = true
-  loadMyAssets()
+  scanAssetLocked.value = false
+  scanAssetLabel.value = ''
+  applyVisible.value = !scanQuery
+  try {
+    if (!scanQuery) {
+      await loadApplyAssets()
+      return
+    }
+    const assetId = Array.isArray(scanQuery.asset_id) ? scanQuery.asset_id[0] : scanQuery.asset_id
+    const [assetRes, contextRes] = await Promise.all([
+      api.getAssetById({ id: assetId }),
+      api.getAssetActionContext(),
+    ])
+    const scannedAsset = resolveScannedAsset([assetRes.data], scanQuery)
+    hasActiveEmployee.value = contextRes.data?.has_active_employee === true
+    const allowed = canUseScanAction('repair', scannedAsset, {
+      accessApis: permissionStore.accessApis || [],
+      portal: userStore.portal,
+      ownAssetIds: contextRes.data?.own_asset_ids || [],
+      hasActiveEmployee: contextRes.data?.has_active_employee === true,
+    })
+    if (!allowed) {
+      applyVisible.value = false
+      $message.warning('未找到这台可报修资产，可能已变更状态或你当前无权操作。')
+      return
+    }
+    assetOptions.value = [
+      { label: `${scannedAsset.asset_no} ${scannedAsset.name}`, value: scannedAsset.id },
+    ]
+    applyForm.value.asset_id = scannedAsset.id
+    scanAssetLocked.value = true
+    scanAssetLabel.value = `${scannedAsset.asset_no} ${scannedAsset.name}`
+    applyVisible.value = true
+  } catch (error) {
+    if (scanQuery) applyVisible.value = false
+    if (shouldShowLocalError(error)) $message.error(error?.msg || error?.message || '可报修资产加载失败，请稍后重试。')
+  }
 }
 
 function openRegister() {
   applyMode.value = 'register'
   applyForm.value = { asset_id: null, reason: '管理员登记送修', employee_id: null }
+  scanAssetLocked.value = false
+  scanAssetLabel.value = ''
   applyVisible.value = true
   loadRegisterCandidates()
   loadEmployees()
 }
 
 async function submitApply() {
-  if (!applyForm.value.asset_id || !applyForm.value.reason?.trim()) {
+  const reason = applyForm.value.reason?.trim() || ''
+  if (!applyForm.value.asset_id || !reason) {
     $message.warning('请选择资产并填写故障说明')
+    return
+  }
+  if (applyMode.value === 'apply' && reason.length < 2) {
+    $message.warning('故障说明至少输入 2 个字符')
     return
   }
   if (applyMode.value === 'register' && !applyForm.value.employee_id) {
@@ -113,21 +175,21 @@ async function submitApply() {
     if (applyMode.value === 'register') {
       await api.registerAssetRepair({
         asset_id: applyForm.value.asset_id,
-        reason: applyForm.value.reason,
+        reason,
         employee_id: applyForm.value.employee_id,
       })
       $message.success('已登记送修')
     } else {
       await api.applyAssetRepair({
         asset_id: applyForm.value.asset_id,
-        reason: applyForm.value.reason,
+        reason,
       })
       $message.success('报修已提交')
     }
     applyVisible.value = false
     $table.value?.handleSearch()
   } catch (e) {
-    $message.error(e?.msg || e?.message || '提交失败')
+    if (shouldShowLocalError(e)) $message.error(e?.msg || e?.message || '提交失败')
   } finally {
     applyLoading.value = false
   }
@@ -155,7 +217,7 @@ async function submitApprove() {
     approveVisible.value = false
     $table.value?.handleSearch()
   } catch (e) {
-    $message.error(e?.msg || e?.message || '审批失败')
+    if (shouldShowLocalError(e)) $message.error(e?.msg || e?.message || '审批失败')
   } finally {
     approveLoading.value = false
   }
@@ -175,14 +237,14 @@ async function submitComplete() {
     completeVisible.value = false
     $table.value?.handleSearch()
   } catch (e) {
-    $message.error(e?.msg || e?.message || '操作失败')
+    if (shouldShowLocalError(e)) $message.error(e?.msg || e?.message || '操作失败')
   } finally {
     completeLoading.value = false
   }
 }
 
 const columns = [
-  { title: '资产编号', key: 'asset_no', width: 110, align: 'center' },
+  { title: '资产编号', key: 'asset_no', width: 110, align: 'center', fixed: 'left' },
   { title: '资产名称', key: 'asset_name', width: 140, align: 'center' },
   { title: '报修人', key: 'employee_name', width: 90, align: 'center' },
   { title: '故障说明', key: 'reason', ellipsis: { tooltip: true } },
@@ -242,12 +304,18 @@ const columns = [
     },
   },
 ]
+
+onMounted(async () => {
+  $table.value?.handleSearch()
+  await loadActionContext()
+  if (route.query.asset_id || route.query.asset_no) openApply(route.query)
+})
 </script>
 
 <template>
   <CommonPage>
     <template #action>
-      <NButton v-if="canApply()" type="primary" style="margin-right: 8px" @click="openApply"
+      <NButton v-if="canApply()" type="primary" style="margin-right: 8px" @click="openApply()"
         >我要报修</NButton
       >
       <NButton v-if="canRegister()" @click="openRegister">登记送修</NButton>
@@ -257,6 +325,7 @@ const columns = [
       v-model:query-items="queryItems"
       :columns="columns"
       :get-data="api.getAssetRepairList"
+      :scroll-x="900"
     >
       <template #queryBar>
         <QueryBarItem label="范围" label-width="50">
@@ -278,17 +347,23 @@ const columns = [
       v-model:show="applyVisible"
       preset="card"
       :title="applyMode === 'register' ? '登记送修' : '报修'"
-      style="width: 420px"
+      style="width: min(420px, calc(100vw - 24px))"
     >
       <NForm>
         <NFormItem label="资产">
-          <NSelect
-            v-model:value="applyForm.asset_id"
-            :options="assetOptions"
-            filterable
-            placeholder="选择资产"
-            @update:value="onRegisterAssetChange"
-          />
+          <div class="scan-prefill-control">
+            <NSelect
+              v-model:value="applyForm.asset_id"
+              :options="assetOptions"
+              filterable
+              :disabled="scanAssetLocked"
+              :placeholder="scanAssetLocked ? scanAssetLabel : '选择资产'"
+              @update:value="onRegisterAssetChange"
+            />
+            <p v-if="scanAssetLocked" class="scan-prefill-hint">
+              已从扫码结果带入：{{ scanAssetLabel }}
+            </p>
+          </div>
         </NFormItem>
         <NFormItem v-if="applyMode === 'register'" label="报修人">
           <NSelect
@@ -299,7 +374,7 @@ const columns = [
           />
         </NFormItem>
         <NFormItem label="故障说明">
-          <NInput v-model:value="applyForm.reason" type="textarea" :rows="3" maxlength="255" />
+          <NInput v-model:value="applyForm.reason" type="textarea" :rows="3" maxlength="255" show-count placeholder="请具体说明故障（至少 2 个字符）" />
         </NFormItem>
       </NForm>
       <template #footer>
@@ -308,10 +383,15 @@ const columns = [
       </template>
     </NModal>
 
-    <NModal v-model:show="approveVisible" preset="card" title="审批报修" style="width: 400px">
+    <NModal
+      v-model:show="approveVisible"
+      preset="card"
+      title="审批报修"
+      style="width: min(400px, calc(100vw - 24px))"
+    >
       <NForm>
         <NFormItem label="意见">
-          <NInput v-model:value="approveForm.comment" type="textarea" :rows="3" />
+          <NInput v-model:value="approveForm.comment" type="textarea" :rows="3" maxlength="255" show-count />
         </NFormItem>
       </NForm>
       <template #footer>
@@ -320,7 +400,12 @@ const columns = [
       </template>
     </NModal>
 
-    <NModal v-model:show="completeVisible" preset="card" title="登记修好" style="width: 400px">
+    <NModal
+      v-model:show="completeVisible"
+      preset="card"
+      title="登记修好"
+      style="width: min(400px, calc(100vw - 24px))"
+    >
       <NForm>
         <NFormItem label="结果">
           <NSelect
@@ -332,7 +417,7 @@ const columns = [
           />
         </NFormItem>
         <NFormItem label="备注">
-          <NInput v-model:value="completeForm.comment" />
+          <NInput v-model:value="completeForm.comment" maxlength="255" />
         </NFormItem>
       </NForm>
       <template #footer>
@@ -342,3 +427,18 @@ const columns = [
     </NModal>
   </CommonPage>
 </template>
+
+<style scoped>
+.scan-prefill-control {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+}
+.scan-prefill-hint {
+  margin: 6px 0 0;
+  color: var(--shell-text-muted, #667085);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+</style>

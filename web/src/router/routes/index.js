@@ -10,8 +10,8 @@ export const basicRoutes = [
     name: 'RootPortal',
     isHidden: true,
     // 禁止写死 redirect:/workbench（会先于守卫把 / 收成管理端，PORTAL-WB-1）
-    // 落点只由 auth-guard → getHomePath(portal) 决定
-    component: { render: () => null },
+    // 落点只由 auth-guard → getHomePath(portal) 决定；组件只做守卫漏掉时的兜底
+    component: () => import('@/views/root-portal.vue'),
     meta: { order: 0 },
   },
   {

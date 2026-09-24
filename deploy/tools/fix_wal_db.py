@@ -5,7 +5,7 @@ import sys
 import tempfile
 import os
 
-src_dir = r"D:\项目\开发\database\data"
+src_dir = r"/path/to/workspace/database\data"
 tmp = tempfile.mkdtemp(prefix="sqlite_fix_")
 for f in ("db.sqlite3", "db.sqlite3-wal", "db.sqlite3-shm"):
     p = os.path.join(src_dir, f)

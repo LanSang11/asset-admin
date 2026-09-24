@@ -4,10 +4,37 @@
       <slot name="queryBar" />
     </QueryBar>
 
+    <div v-if="columnSetting" class="crud-table__toolbar">
+      <n-popover trigger="click" placement="bottom-end">
+        <template #trigger>
+          <n-button size="small" aria-label="列设置">列设置</n-button>
+        </template>
+        <div class="crud-table__column-panel">
+          <n-checkbox
+            v-for="item in settingColumns"
+            :key="item.key"
+            :checked="isColumnChecked(item.key)"
+            :disabled="item.locked"
+            @update:checked="(checked) => onToggleColumn(item.key, checked)"
+          >
+            {{ item.title }}
+          </n-checkbox>
+          <n-button
+            class="crud-table__column-reset"
+            size="small"
+            tertiary
+            @click="resetColumnSetting"
+          >
+            恢复默认列
+          </n-button>
+        </div>
+      </n-popover>
+    </div>
+
     <n-data-table
       :remote="remote"
       :loading="loading"
-      :columns="columns"
+      :columns="visibleColumns"
       :data="tableData"
       :scroll-x="scrollX"
       :row-key="(row) => row[rowKey]"
@@ -19,6 +46,18 @@
 </template>
 
 <script setup>
+import { useUserStore } from '@/store'
+import {
+  applyColumnVisibility,
+  buildTableColumnPrefKey,
+  filterVisibleColumns,
+  getColumnPrefStorage,
+  listSettingColumns,
+  readHiddenKeys,
+  sanitizeHiddenKeys,
+  writeHiddenKeys,
+} from '@/utils/table-column-prefs'
+
 const props = defineProps({
   /**
    * @remote true: 后端分页  false： 前端分页
@@ -45,6 +84,23 @@ const props = defineProps({
   columns: {
     type: Array,
     required: true,
+  },
+  /**
+   * 默认关闭。需要列显隐的页面显式传入 column-setting。
+   */
+  columnSetting: {
+    type: Boolean,
+    default: false,
+  },
+  tableId: {
+    type: String,
+    default: 'default',
+  },
+  lockedColumnKeys: {
+    type: Array,
+    default() {
+      return ['actions']
+    },
   },
   /** queryBar中的参数 */
   queryItems: {
@@ -73,9 +129,64 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:queryItems', 'onChecked', 'onDataChange'])
+const userStore = useUserStore()
+const route = useRoute()
 const loading = ref(false)
 const initQuery = { ...props.queryItems }
 const tableData = ref([])
+const hiddenKeys = ref([])
+const prefKey = computed(() =>
+  buildTableColumnPrefKey({
+    userId: userStore.userId,
+    routePath: route.path,
+    tableId: props.tableId,
+  })
+)
+const settingColumns = computed(() => listSettingColumns(props.columns, props.lockedColumnKeys))
+const visibleColumns = computed(() => {
+  if (!props.columnSetting) return props.columns
+  return filterVisibleColumns(props.columns, hiddenKeys.value, props.lockedColumnKeys)
+})
+
+function reloadColumnPrefs() {
+  if (!props.columnSetting) {
+    hiddenKeys.value = []
+    return
+  }
+  const storage = getColumnPrefStorage()
+  const stored = readHiddenKeys(storage, prefKey.value)
+  const clean = sanitizeHiddenKeys(stored, props.columns, props.lockedColumnKeys)
+  hiddenKeys.value = clean
+  if (JSON.stringify(stored) !== JSON.stringify(clean)) {
+    writeHiddenKeys(storage, prefKey.value, clean)
+  }
+}
+
+function persistHiddenKeys() {
+  if (!props.columnSetting) return
+  writeHiddenKeys(getColumnPrefStorage(), prefKey.value, hiddenKeys.value)
+}
+
+function isColumnChecked(key) {
+  if ((props.lockedColumnKeys || []).includes(key)) return true
+  return !hiddenKeys.value.includes(key)
+}
+
+function onToggleColumn(key, visible) {
+  hiddenKeys.value = applyColumnVisibility(hiddenKeys.value, key, visible, props.lockedColumnKeys)
+  persistHiddenKeys()
+}
+
+function resetColumnSetting() {
+  hiddenKeys.value = []
+  persistHiddenKeys()
+}
+
+watch(
+  () => [props.columnSetting, prefKey.value],
+  () => reloadColumnPrefs(),
+  { immediate: true }
+)
 const pagination = reactive({
   page: 1,
   page_size: 10,
@@ -156,3 +267,21 @@ defineExpose({
   tableData,
 })
 </script>
+
+<style scoped>
+.crud-table__toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 12px;
+}
+.crud-table__column-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 168px;
+}
+.crud-table__column-reset {
+  margin-top: 4px;
+  align-self: flex-start;
+}
+</style>

@@ -4,7 +4,9 @@
       <slot v-if="$slots.header" name="header" />
       <template v-else>
         <h2 class="common-page__title">{{ title || route.meta?.title }}</h2>
-        <slot name="action" />
+        <div v-if="$slots.action" class="common-page__actions">
+          <slot name="action" />
+        </div>
       </template>
     </header>
 

@@ -29,6 +29,7 @@ SENSITIVE_KEY_NAMES = (
     "recovery_answer_hash",
     "step_up_token",
     "captcha_ticket",
+    "login_challenge",
     "access_token",
     "api_key",
     "apikey",

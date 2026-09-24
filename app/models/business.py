@@ -1,5 +1,6 @@
 """业务模型：员工/资产/领用归还/历史追溯/通知（阶段2 企业资产管理系统）"""
 from tortoise import fields
+from tortoise.indexes import Index
 
 from .base import BaseModel, TimestampMixin
 
@@ -64,6 +65,25 @@ class Asset(BaseModel, TimestampMixin):
 
     class Meta:
         table = "assets"
+
+
+class DataFieldChange(BaseModel, TimestampMixin):
+    """资产/员工关键字段改前改后；敏感字段只保存掩码。"""
+
+    entity_type = fields.CharField(max_length=16, index=True)
+    entity_id = fields.IntField(index=True)
+    field_name = fields.CharField(max_length=64)
+    old_value = fields.CharField(max_length=500, default="")
+    new_value = fields.CharField(max_length=500, default="")
+    operator_id = fields.IntField(null=True, index=True)
+    operator_name = fields.CharField(max_length=64, default="")
+
+    class Meta:
+        table = "data_field_changes"
+        indexes = (
+            Index(fields=("entity_type", "entity_id", "created_at"), name="idx_data_field_changes_entity"),
+            Index(fields=("created_at",), name="idx_data_field_changes_created"),
+        )
 
 
 class AssetUse(BaseModel, TimestampMixin):

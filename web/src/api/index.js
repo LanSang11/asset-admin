@@ -31,6 +31,7 @@ export default {
   resetPassword: (data = {}, headers = {}) =>
     request.post(`/user/reset_password`, data, { headers }),
   resetUserTotp: (data = {}, headers = {}) => request.post('/user/reset_totp', data, { headers }),
+  forceLogout: (data = {}, headers = {}) => request.post('/user/force_logout', data, { headers }),
   // role
   getRoleList: (params = {}) => request.get('/role/list', { params }),
   createRole: (data = {}) => request.post('/role/create', data),
@@ -92,6 +93,8 @@ export default {
   getAssetList: (params = {}) => request.get('/asset/list', { params }),
   getMyAssets: () => request.get('/asset/my'),
   getAssetById: (params = {}) => request.get('/asset/get', { params }),
+  getAssetByNo: (params = {}) => request.get('/asset/get', { params, silent: true }),
+  getAssetActionContext: () => request.get('/asset/my', { params: { context: 1 }, silent: true }),
   getAssetCategories: () => request.get('/asset/categories'),
   createAsset: (data = {}) => request.post('/asset/create', data),
   updateAsset: (data = {}) => request.post('/asset/update', data),

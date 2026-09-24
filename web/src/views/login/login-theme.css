@@ -22,10 +22,14 @@
 
 .login-root {
   position: relative;
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
   width: 100%;
   overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
   background: var(--yd-bg-deep);
   color: var(--yd-text);
   isolation: isolate;
@@ -35,12 +39,13 @@
 .login-content {
   position: relative;
   z-index: 2;
-  min-height: 100vh;
+  min-height: 100%;
   width: 100%;
   display: flex;
   align-items: flex-start;
   justify-content: center;
   padding: 24px 16px 40px;
+  padding: 24px 16px calc(40px + env(safe-area-inset-bottom));
   pointer-events: none;
   box-sizing: border-box;
 }
@@ -112,7 +117,8 @@
 .login-field--submit {
   margin-top: 22px;
   position: sticky;
-  bottom: 0;
+  bottom: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom));
   z-index: 3;
   padding-top: 8px;
   padding-bottom: 4px;
@@ -307,6 +313,7 @@
 
   .login-content {
     padding: 16px 10px 28px;
+    padding: 16px 10px calc(28px + env(safe-area-inset-bottom));
   }
 
   .login-brand-logo {

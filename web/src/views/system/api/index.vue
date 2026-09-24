@@ -252,16 +252,16 @@ const columns = [
         :rules="addAPIRules"
       >
         <NFormItem label="API名称" path="path">
-          <NInput v-model:value="modalForm.path" clearable placeholder="请输入API路径" />
+          <NInput v-model:value="modalForm.path" clearable maxlength="100" placeholder="请输入API路径（最多 100 个字符）" />
         </NFormItem>
         <NFormItem label="请求方式" path="method">
           <NInput v-model:value="modalForm.method" clearable placeholder="请输入请求方式" />
         </NFormItem>
         <NFormItem label="API简介" path="summary">
-          <NInput v-model:value="modalForm.summary" clearable placeholder="请输入API简介" />
+          <NInput v-model:value="modalForm.summary" clearable maxlength="500" placeholder="请输入API简介" />
         </NFormItem>
         <NFormItem label="Tags" path="tags">
-          <NInput v-model:value="modalForm.tags" clearable placeholder="请输入Tags" />
+          <NInput v-model:value="modalForm.tags" clearable maxlength="100" placeholder="请输入Tags" />
         </NFormItem>
       </NForm>
     </CrudModal>

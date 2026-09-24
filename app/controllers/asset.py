@@ -8,6 +8,7 @@ from app.core.ctx import CTX_USER_ID
 from app.models.admin import User
 from app.models.business import Asset, Employee
 from app.schemas.assets import AssetCreate, AssetUpdate
+from app.services.field_change_service import update_with_field_changes
 from app.services.warranty import attach_warranty_fields, emit_warranty_alerts, warranty_q
 from app.utils.identity import resolve_biz_role
 
@@ -21,7 +22,9 @@ ASSET_STATUS_REPAIR = 3   # 维修
 ASSET_STATUS_SCRAPPED = 4 # 报废
 
 # 员工可见闲置资产摘要字段外的敏感字段（ISO-B1）
-_EMP_SENSITIVE_FIELDS = ("price", "serial_no", "purchase_date", "warranty_until", "remark", "owner_emp_id")
+EMP_SENSITIVE_FIELDS = frozenset(
+    {"price", "serial_no", "purchase_date", "warranty_until", "remark", "owner_emp_id"}
+)
 
 
 class AssetController(CRUDBase[Asset, AssetCreate, AssetUpdate]):
@@ -92,7 +95,7 @@ class AssetController(CRUDBase[Asset, AssetCreate, AssetUpdate]):
         if role == "admin":
             return attach_warranty_fields(d)
         if role == "employee" and not is_own:
-            for f in _EMP_SENSITIVE_FIELDS:
+            for f in EMP_SENSITIVE_FIELDS:
                 if f in d:
                     d[f] = None if f in ("price", "owner_emp_id", "warranty_until") else ""
         elif role == "manager" and not is_own and asset.status == ASSET_STATUS_IDLE:
@@ -145,7 +148,13 @@ class AssetController(CRUDBase[Asset, AssetCreate, AssetUpdate]):
         data = obj_in.update_dict()
         if "warranty_until" in data and current.warranty_until != data.get("warranty_until"):
             data["warranty_notified_state"] = ""
-        obj = await self.update(obj_in.id, data)
+        obj = await update_with_field_changes(
+            model=Asset,
+            entity_type="asset",
+            entity_id=obj_in.id,
+            data=data,
+            operator_id=CTX_USER_ID.get(),
+        )
         await emit_warranty_alerts([obj])
         return obj
 

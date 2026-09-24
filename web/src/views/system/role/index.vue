@@ -300,10 +300,10 @@ async function updateRoleAuthorized() {
             trigger: ['input', 'blur'],
           }"
         >
-          <NInput v-model:value="modalForm.name" placeholder="请输入角色名称" />
+          <NInput v-model:value="modalForm.name" maxlength="20" placeholder="请输入角色名称（最多 20 个字符）" />
         </NFormItem>
         <NFormItem label="角色描述" path="desc">
-          <NInput v-model:value="modalForm.desc" placeholder="请输入角色描述" />
+          <NInput v-model:value="modalForm.desc" maxlength="500" placeholder="请输入角色描述" />
         </NFormItem>
       </NForm>
     </CrudModal>

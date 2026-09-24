@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { canWorkUserAccessPath, getHomePath, isAdminLandingPath } from '../../web/src/utils/portal.js'
+import { canWorkUserAccessPath, getHomePath, isAdminLandingPath, resolvePostLoginLocation } from '../../web/src/utils/portal.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const root = join(here, '../..')
@@ -26,6 +26,10 @@ const cases = [
   [isAdminLandingPath('/'), true, "isAdminLandingPath('/')"],
   [isAdminLandingPath('/workbench'), true, "isAdminLandingPath('/workbench')"],
   [isAdminLandingPath('/system/user'), false, "isAdminLandingPath('/system/user')"],
+  [resolvePostLoginLocation('/', 'admin'), '/workbench', "resolvePostLoginLocation('/', 'admin')"],
+  [resolvePostLoginLocation('/', 'work'), '/work/home', "resolvePostLoginLocation('/', 'work')"],
+  [resolvePostLoginLocation('/login', 'admin'), '/workbench', "resolvePostLoginLocation('/login', 'admin')"],
+  [resolvePostLoginLocation('/workbench', 'work'), '/work/home', "resolvePostLoginLocation('/workbench', 'work')"],
 ]
 
 const portalSrc = readFileSync(join(root, 'web/src/utils/portal.js'), 'utf8')
@@ -54,6 +58,17 @@ cases.push([
   /path:\s*['"]\/['"][\s\S]{0,180}isHidden:\s*true/.test(routesSrc),
   true,
   "routes/index.js 站点根须 isHidden，避免侧栏出现 RootPortal",
+])
+const loginSrc = readFileSync(join(root, 'web/src/views/login/index.vue'), 'utf8')
+cases.push([
+  !/Reflect\.deleteProperty/.test(loginSrc),
+  true,
+  'login/index.vue 禁止 Reflect.deleteProperty 改当前路由 query',
+])
+cases.push([
+  /resolvePostLoginLocation/.test(loginSrc),
+  true,
+  'login/index.vue 登录成功须走 resolvePostLoginLocation',
 ])
 
 let failed = 0

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
-from app.models.admin import Role, User, VerificationPolicy, VerificationSettings
+from app.models.admin import Role, SecurityEvent, User, VerificationPolicy, VerificationSettings
 
 VerificationMode = Literal["off", "password", "totp"]
 
@@ -15,7 +16,13 @@ ROOT_OPERATION_KEYS = frozenset(
         "tls_cert_renew",
     }
 )
-ACCEPTANCE_MODE_HOURS = 2
+ACCEPTANCE_MODE_MINUTES_DEFAULT = 120
+ACCEPTANCE_MODE_MINUTES_MIN = 15
+ACCEPTANCE_MODE_MINUTES_MAX = 480
+ACCEPTANCE_MODE_MINUTES_STEP = 15
+ACCEPTANCE_MODE_HOURS = ACCEPTANCE_MODE_MINUTES_DEFAULT // 60
+ACCEPTANCE_DURATION_ERROR = "时长须为 15 到 480 分钟，且为 15 的倍数"
+_ACCEPTANCE_ENABLE_DETAIL = re.compile(r"开启临时免登录动态码 (\d+) 分钟")
 
 OPERATION_DEFINITIONS = (
     ("user_create", "创建系统用户", "totp"),
@@ -64,10 +71,9 @@ async def operation_mode(operation_key: str) -> str:
 
 
 async def login_totp_required(user: User) -> bool:
-    settings = await VerificationSettings.filter(id=1).first()
-    force_superuser = True if settings is None else bool(settings.force_superuser)
-    if force_superuser and user.is_superuser:
+    if user.is_superuser:
         return True
+    settings = await VerificationSettings.filter(id=1).first()
     role_ids = [] if settings is None else [int(item) for item in (settings.role_ids or [])]
     if not role_ids:
         return False
@@ -92,17 +98,17 @@ async def policies_payload() -> dict:
     return {
         "operations": operations,
         "login": {
-            "force_superuser": True if settings is None else bool(settings.force_superuser),
+            "force_superuser": True,
             "role_ids": [] if settings is None else [int(item) for item in (settings.role_ids or [])],
         },
         "roles": [{"id": role.id, "name": role.name} for role in roles],
         "root_operations": [
             {"operation_key": "verification_policy_update", "label": "修改二次验证策略", "mode": "totp"},
             {"operation_key": "user_totp_reset", "label": "重置他人 TOTP", "mode": "totp"},
-            {"operation_key": "acceptance_mode_update", "label": "开启限时验收模式", "mode": "totp"},
+            {"operation_key": "acceptance_mode_update", "label": "开启临时免登录动态码", "mode": "totp"},
             {"operation_key": "tls_cert_renew", "label": "续签 HTTPS 证书", "mode": "totp"},
         ],
-        "acceptance_mode": acceptance_window(getattr(settings, "acceptance_until", None)),
+        "acceptance_mode": await acceptance_mode_status(include_operator=True),
         "password_rotate": password_rotate_payload(settings),
     }
 
@@ -115,22 +121,85 @@ def _aware_utc(value: Optional[datetime]) -> Optional[datetime]:
     return value.astimezone(timezone.utc)
 
 
-def acceptance_window(until: Optional[datetime], now: Optional[datetime] = None) -> dict:
+def duration_hours_for(minutes: int):
+    if minutes % 60 == 0:
+        return minutes // 60
+    return minutes / 60
+
+
+def normalize_acceptance_duration_minutes(duration_minutes: Optional[int] = None) -> int:
+    if duration_minutes is None:
+        return ACCEPTANCE_MODE_MINUTES_DEFAULT
+    if isinstance(duration_minutes, bool) or not isinstance(duration_minutes, int):
+        raise ValueError(ACCEPTANCE_DURATION_ERROR)
+    if (
+        duration_minutes < ACCEPTANCE_MODE_MINUTES_MIN
+        or duration_minutes > ACCEPTANCE_MODE_MINUTES_MAX
+        or duration_minutes % ACCEPTANCE_MODE_MINUTES_STEP != 0
+    ):
+        raise ValueError(ACCEPTANCE_DURATION_ERROR)
+    return duration_minutes
+
+
+def compute_acceptance_until(
+    enabled: bool,
+    duration_minutes: Optional[int],
+    now: datetime,
+) -> tuple[Optional[datetime], int]:
+    current = _aware_utc(now) or now
+    if not enabled:
+        return None, ACCEPTANCE_MODE_MINUTES_DEFAULT
+    minutes = normalize_acceptance_duration_minutes(duration_minutes)
+    return current + timedelta(minutes=minutes), minutes
+
+
+def parse_acceptance_duration_from_detail(detail: str) -> Optional[int]:
+    match = _ACCEPTANCE_ENABLE_DETAIL.search(detail or "")
+    if not match:
+        return None
+    try:
+        return normalize_acceptance_duration_minutes(int(match.group(1)))
+    except ValueError:
+        return None
+
+
+def acceptance_window(
+    until: Optional[datetime],
+    now: Optional[datetime] = None,
+    duration_minutes: Optional[int] = None,
+    enabled_by: Optional[str] = None,
+) -> dict:
     current = _aware_utc(now) or datetime.now(timezone.utc)
     expires = _aware_utc(until)
     active = bool(expires and expires > current)
     remaining = int((expires - current).total_seconds()) if active else 0
+    minutes = ACCEPTANCE_MODE_MINUTES_DEFAULT if duration_minutes is None else int(duration_minutes)
     return {
         "active": active,
         "expires_at": expires.isoformat() if active else None,
         "remaining_seconds": max(remaining, 0),
-        "duration_hours": ACCEPTANCE_MODE_HOURS,
+        "duration_hours": duration_hours_for(minutes),
+        "duration_minutes": minutes,
+        "enabled_by": enabled_by or None,
     }
 
 
-async def acceptance_mode_status() -> dict:
+async def _latest_acceptance_event() -> Optional[SecurityEvent]:
+    return await SecurityEvent.filter(event_type="acceptance_mode", success=True).order_by("-id").first()
+
+
+async def acceptance_mode_status(*, include_operator: bool = False) -> dict:
     settings = await VerificationSettings.filter(id=1).first()
-    return acceptance_window(getattr(settings, "acceptance_until", None) if settings else None)
+    until = getattr(settings, "acceptance_until", None) if settings else None
+    if not include_operator:
+        return acceptance_window(until)
+    event = await _latest_acceptance_event()
+    stored_minutes = parse_acceptance_duration_from_detail(getattr(event, "detail", "") or "") if event else None
+    return acceptance_window(
+        until,
+        duration_minutes=stored_minutes,
+        enabled_by=getattr(event, "username", None) if event else None,
+    )
 
 
 async def acceptance_mode_active() -> bool:
@@ -183,13 +252,23 @@ async def password_must_rotate(user: User) -> bool:
     )
 
 
-async def set_acceptance_mode(enabled: bool) -> dict:
+async def set_acceptance_mode(
+    enabled: bool,
+    duration_minutes: Optional[int] = None,
+    now: Optional[datetime] = None,
+    enabled_by: Optional[str] = None,
+) -> dict:
     settings, _ = await VerificationSettings.get_or_create(
         id=1,
         defaults={"force_superuser": True, "role_ids": []},
     )
-    settings.acceptance_until = (
-        datetime.now(timezone.utc) + timedelta(hours=ACCEPTANCE_MODE_HOURS) if enabled else None
-    )
+    current = _aware_utc(now) or datetime.now(timezone.utc)
+    until, minutes = compute_acceptance_until(enabled, duration_minutes, current)
+    settings.acceptance_until = until
     await settings.save()
-    return acceptance_window(settings.acceptance_until)
+    return acceptance_window(
+        settings.acceptance_until,
+        now=current,
+        duration_minutes=minutes,
+        enabled_by=enabled_by,
+    )

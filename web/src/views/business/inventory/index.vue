@@ -7,6 +7,7 @@ import QueryBarItem from '@/components/query-bar/QueryBarItem.vue'
 import CrudTable from '@/components/table/CrudTable.vue'
 import { usePermissionStore } from '@/store'
 import api from '@/api'
+import { shouldShowLocalError } from '@/utils/http/validation-errors'
 
 defineOptions({ name: '盘点' })
 
@@ -62,6 +63,10 @@ async function submitStart() {
     $message.warning('请填写盘点名称')
     return
   }
+  if (startForm.value.title.trim().length > 100) {
+    $message.warning('盘点名称最多输入 100 个字符')
+    return
+  }
   if (startLoading.value) return
   startLoading.value = true
   try {
@@ -71,7 +76,7 @@ async function submitStart() {
     $table.value?.handleSearch()
     openLines(res.data)
   } catch (e) {
-    $message.error(e?.msg || e?.message || '发起失败')
+    if (shouldShowLocalError(e)) $message.error(e?.msg || e?.message || '发起失败')
   } finally {
     startLoading.value = false
   }
@@ -94,7 +99,7 @@ async function submitCount(row, result) {
     summary.value = res.data?.summary
     $lines.value?.handleSearch()
   } catch (e) {
-    $message.error(e?.msg || e?.message || '记录失败')
+    if (shouldShowLocalError(e)) $message.error(e?.msg || e?.message || '记录失败')
   }
 }
 
@@ -107,7 +112,7 @@ async function submitClose() {
     summary.value = res.data?.summary
     $table.value?.handleSearch()
   } catch (e) {
-    $message.error(e?.msg || e?.message || '结束失败')
+    if (shouldShowLocalError(e)) $message.error(e?.msg || e?.message || '结束失败')
   }
 }
 
@@ -230,7 +235,7 @@ const lineColumns = [
     <NModal v-model:show="startVisible" preset="card" title="发起盘点" style="width: 420px">
       <NForm>
         <NFormItem label="名称">
-          <NInput v-model:value="startForm.title" placeholder="例如 2026年8月全司盘点" />
+          <NInput v-model:value="startForm.title" maxlength="100" show-count placeholder="例如 2026年8月全司盘点" />
         </NFormItem>
         <NFormItem label="范围">
           <NSelect

@@ -1,4 +1,10 @@
-import { getToken, isNullOrWhitespace, canWorkUserAccessPath, getHomePath, isAdminLandingPath } from '@/utils'
+import {
+  getToken,
+  isNullOrWhitespace,
+  canWorkUserAccessPath,
+  getHomePath,
+  isAdminLandingPath,
+} from '@/utils'
 import { useUserStore } from '@/store'
 
 const WHITE_LIST = ['/login', '/404', '/403']
@@ -11,7 +17,8 @@ export function createAuthGuard(router) {
     if (isNullOrWhitespace(token)) {
       if (WHITE_LIST.includes(to.path)) return true
       // 修复：redirect 带完整路径（含 query），登录后跳回原页面不丢参数
-      return { path: 'login', query: { ...to.query, redirect: to.fullPath } }
+      // path 必须绝对 `/login`：相对 `login` 在 `/work/home` 会解析成 `/work/login`
+      return { path: '/login', query: { ...to.query, redirect: to.fullPath } }
     }
 
     const userStore = useUserStore()
@@ -41,10 +48,10 @@ export function createAuthGuard(router) {
             },
       }
     }
-    if (to.path === '/login') return { path: home }
+    if (to.path === '/login') return { path: home, replace: true }
 
     // 根路径只认 portal 首页，禁止写死管理端
-    if (to.path === '/') return { path: home }
+    if (to.path === '/') return { path: home, replace: true }
 
     // 方案 B：员工/主管禁止进入管理后台
     if (portal === 'work') {

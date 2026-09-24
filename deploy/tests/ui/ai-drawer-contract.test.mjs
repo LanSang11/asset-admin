@@ -34,3 +34,18 @@ test('短会话不随路由清空且失败不影响业务页', () => {
   assert.doesNotMatch(drawer, /logout\(/)
   assert.doesNotMatch(drawer, /(?<!sessionId)session\./)
 })
+
+test('占位含报修调拨盘点且卡片能展示三种 kind', () => {
+  const drawer = read('web/src/components/ai/AiAssistantDrawer.vue')
+  assert.match(drawer, /placeholder="[^"]*报修/)
+  assert.match(drawer, /placeholder="[^"]*调拨/)
+  assert.match(drawer, /placeholder="[^"]*盘点/)
+  assert.match(drawer, /只读/)
+  assert.match(drawer, /权限内/)
+  assert.match(drawer, /card\.kind === 'repair'/)
+  assert.match(drawer, /card\.kind === 'transfer'/)
+  assert.match(drawer, /card\.kind === 'inventory'/)
+  assert.match(drawer, /asset_no \|\| ''/)
+  assert.match(drawer, /status_label/)
+  assert.doesNotMatch(drawer, /v-html/)
+})

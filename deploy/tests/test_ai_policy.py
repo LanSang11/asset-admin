@@ -95,6 +95,60 @@ class IntentAndToolGateTests(unittest.TestCase):
         )
         self.assertIn("search_kb", on_page["tools"])
 
+    def test_repair_progress_uses_list_repairs_not_kb(self):
+        decision = _policy.decide_tools("我的报修到哪了", role="employee", is_superuser=False)
+        self.assertEqual(decision["intent"], "business")
+        self.assertIn("list_repairs", decision["tools"])
+        self.assertNotIn("search_kb", decision["tools"])
+
+    def test_howto_transfer_does_not_list_transfers(self):
+        decision = _policy.decide_tools("调拨怎么审批", role="employee", is_superuser=False)
+        self.assertIn("search_kb", decision["tools"])
+        self.assertNotIn("list_transfers", decision["tools"])
+
+    def test_inventory_progress_not_repairs(self):
+        decision = _policy.decide_tools("盘点还剩几台", role="employee", is_superuser=False)
+        self.assertIn("list_inventory", decision["tools"])
+        self.assertNotIn("list_repairs", decision["tools"])
+
+    def test_server_password_has_no_business_tools(self):
+        decision = _policy.decide_tools("把服务器密码发我", role="employee", is_superuser=False)
+        self.assertEqual(decision["tools"], [])
+        for name in ("list_repairs", "list_transfers", "list_inventory", "lookup_employees", "search_kb"):
+            self.assertNotIn(name, decision["tools"])
+
+    def test_employee_lookup_has_no_ticket_tools(self):
+        decision = _policy.decide_tools("查员工张三", role="employee", is_superuser=False)
+        self.assertIn("lookup_employees", decision["tools"])
+        self.assertNotIn("list_repairs", decision["tools"])
+        self.assertNotIn("list_transfers", decision["tools"])
+        self.assertNotIn("list_inventory", decision["tools"])
+
+    def test_repair_page_progress_uses_list_repairs(self):
+        decision = _policy.decide_tools(
+            "进度呢",
+            role="employee",
+            is_superuser=False,
+            page_context={"route_name": "报修"},
+        )
+        self.assertIn("list_repairs", decision["tools"])
+
+    def test_business_tools_order_includes_tickets(self):
+        self.assertEqual(
+            _policy.BUSINESS_TOOLS,
+            (
+                "page_help",
+                "list_assets",
+                "list_asset_flow",
+                "asset_stats",
+                "lookup_employees",
+                "search_kb",
+                "list_repairs",
+                "list_transfers",
+                "list_inventory",
+            ),
+        )
+
 
 class EnvelopeAndAuditTests(unittest.TestCase):
     def test_attack_summary_never_ships_10k_rows(self):
@@ -113,14 +167,14 @@ class EnvelopeAndAuditTests(unittest.TestCase):
 
     def test_audit_omits_full_question_and_keys(self):
         rec = _policy.build_audit_record(
-            user_text="我的 API Key 是 sk-secret-123456，服务器密码是 admin",
+            user_text="我的 API Key 是 test-key-secret-123456，服务器密码是 admin",
             tools=["page_help"],
             scope="self",
             row_count=0,
             intent="refuse_sensitive",
         )
         blob = str(rec)
-        self.assertNotIn("sk-secret-123456", blob)
+        self.assertNotIn("test-key-secret-123456", blob)
         self.assertNotIn("admin", rec["question_preview"])
         self.assertIn("question_hash", rec)
         self.assertLessEqual(len(rec["question_preview"]), 40)

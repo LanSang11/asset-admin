@@ -9,6 +9,7 @@ from app.models.admin import User
 from app.models.business import Employee
 from app.schemas.employees import EmployeeCreate, EmployeeUpdate
 from app.services.employee_query import build_employee_filter, resolve_employee_order
+from app.services.field_change_service import update_with_field_changes
 from app.utils.identity import resolve_biz_role
 
 
@@ -105,7 +106,13 @@ class EmployeeController(CRUDBase[Employee, EmployeeCreate, EmployeeUpdate]):
             if bound and bound.id != obj_in.id:
                 raise HTTPException(status_code=400, detail="该账号已绑定其他员工")
             await self._validate_user(obj_in.user_id)
-        return await self.update(obj_in.id, obj_in.update_dict())
+        return await update_with_field_changes(
+            model=Employee,
+            entity_type="employee",
+            entity_id=obj_in.id,
+            data=obj_in.update_dict(),
+            operator_id=CTX_USER_ID.get(),
+        )
 
     async def delete_employee(self, emp_id: int) -> None:
         """删除前校验（修复：原直接删除导致名下资产/申请历史悬空引用）"""

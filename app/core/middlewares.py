@@ -1,5 +1,4 @@
 import json
-import re
 from datetime import datetime
 from typing import Any, AsyncGenerator
 
@@ -100,11 +99,38 @@ class HttpAuditLogMiddleware(BaseHTTPMiddleware):
                 except Exception:
                     pass
 
-        # 敏感字段脱敏：密码类字段一律不落审计日志
+        # 敏感字段脱敏：密码类字段一律不落审计日志。
+        # 加密 A 档 B2（2026-09-11）：联系方式（phone/email 等）也脱敏；
+        # 且 request_args 可能是嵌套 dict/list（如 JSON body 里的对象），故递归处理。
         SENSITIVE_KEYS = ("password", "old_password", "new_password", "confirm_password", "secret")
-        for key in list(args.keys()):
-            if key.lower() in SENSITIVE_KEYS:
-                args[key] = "***"
+        CONTACT_KEYS = ("phone", "mobile", "telephone", "email")
+
+        def _mask_contact(value: object) -> str:
+            text = str(value or "")
+            if "@" in text:  # 邮箱：保留首字符与域名
+                local, sep, domain = text.partition("@")
+                return f"{local[:1]}***@{domain}" if sep else "***"
+            if len(text) >= 7:  # 手机号：前 3 后 2
+                return f"{text[:3]}****{text[-2:]}"
+            return "***"
+
+        def _mask_sensitive(obj: Any) -> Any:
+            if isinstance(obj, dict):
+                masked = {}
+                for key, value in obj.items():
+                    lowered = str(key).lower()
+                    if lowered in SENSITIVE_KEYS:
+                        masked[key] = "***"
+                    elif lowered in CONTACT_KEYS:
+                        masked[key] = _mask_contact(value) if isinstance(value, str) and value else "***"
+                    else:
+                        masked[key] = _mask_sensitive(value)
+                return masked
+            if isinstance(obj, list):
+                return [_mask_sensitive(item) for item in obj]
+            return obj
+
+        args = _mask_sensitive(args)
 
         # 长文本截断（AI 对话全文、大段请求体等），避免敏感内容明文落库
         args = truncate_sensitive(args)

@@ -9,6 +9,7 @@ from app.models.admin import User
 from app.models.business import Employee
 from app.schemas.base import Success
 from app.schemas.employees import *
+from app.services.field_change_service import list_field_changes
 from app.services.security_event_service import log_security_event
 from app.utils.identity import resolve_biz_role
 from app.utils.request_info import client_ip, device_hash, user_agent
@@ -42,6 +43,9 @@ async def list_employee(
 @router.get("/get", summary="查看员工", dependencies=[DependAuth])
 async def get_employee(
     id: int = Query(..., description="员工ID"),
+    include_changes: bool = Query(False),
+    change_page: int = Query(1, ge=1),
+    change_page_size: int = Query(20, ge=1, le=100),
 ):
     obj = await employee_controller.get(id=id)
     user_id = CTX_USER_ID.get()
@@ -50,7 +54,12 @@ async def get_employee(
     role = await resolve_biz_role(user, me)
     if not await employee_controller.can_view_employee(obj, role, me):
         raise HTTPException(status_code=403, detail="无权查看该员工")
-    return Success(data=await employee_controller.serialize_for_viewer(obj, role, me))
+    data = await employee_controller.serialize_for_viewer(obj, role, me)
+    if include_changes is True:
+        data["changes"] = await list_field_changes(
+            "employee", obj.id, change_page, change_page_size
+        )
+    return Success(data=data)
 
 
 @router.post("/create", summary="创建员工", dependencies=[DependPermission])

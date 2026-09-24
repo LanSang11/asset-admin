@@ -1,6 +1,7 @@
 <template>
   <div v-if="active" class="acceptance-banner" role="status">
-    限时验收模式已开启：登录暂不要求动态码，高危操作策略未改。剩余 {{ remainText }}，到期自动恢复。
+    临时免登录动态码已开启：登录暂不要求动态码，高危操作策略未改。剩余
+    {{ remainText }}，到期自动恢复。
   </div>
 </template>
 

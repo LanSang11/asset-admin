@@ -204,10 +204,10 @@ const columns = [
           ></NTreeSelect>
         </NFormItem>
         <NFormItem label="部门名称" path="name">
-          <NInput v-model:value="modalForm.name" clearable placeholder="请输入部门名称" />
+          <NInput v-model:value="modalForm.name" clearable maxlength="20" placeholder="请输入部门名称（最多 20 个字符）" />
         </NFormItem>
         <NFormItem label="备注" path="desc">
-          <NInput v-model:value="modalForm.desc" type="textarea" clearable />
+          <NInput v-model:value="modalForm.desc" type="textarea" clearable maxlength="500" show-count />
         </NFormItem>
         <NFormItem label="排序" path="order">
           <NInputNumber v-model:value="modalForm.order" min="0"></NInputNumber>

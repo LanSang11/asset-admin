@@ -5,7 +5,6 @@ import {
   NForm,
   NFormItem,
   NInput,
-  NInputNumber,
   NModal,
   NPopconfirm,
   NSelect,
@@ -17,10 +16,12 @@ import CommonPage from '@/components/page/CommonPage.vue'
 import QueryBarItem from '@/components/query-bar/QueryBarItem.vue'
 import CrudModal from '@/components/table/CrudModal.vue'
 import CrudTable from '@/components/table/CrudTable.vue'
+import FieldChangeDrawer from '@/components/business/FieldChangeDrawer.vue'
 
 import { useCRUD } from '@/composables'
 import api from '@/api'
 import { downloadFile } from '@/utils/download'
+import { shouldShowLocalError } from '@/utils/http/validation-errors'
 
 defineOptions({ name: '员工管理' })
 
@@ -69,6 +70,13 @@ const attachVisible = ref(false)
 const attachEmp = ref(null)
 const attachRows = ref([])
 const attachLoading = ref(false)
+const changeVisible = ref(false)
+const changeEntity = ref(null)
+
+function openChanges(row) {
+  changeEntity.value = row
+  changeVisible.value = true
+}
 
 async function openAttach(row) {
   attachEmp.value = row
@@ -102,7 +110,7 @@ async function onAttachUpload({ file, onFinish, onError }) {
     await loadAttach()
     onFinish && onFinish()
   } catch (e) {
-    $message.error(e?.message || e?.msg || '上传失败')
+    if (shouldShowLocalError(e)) $message.error(e?.message || e?.msg || '上传失败')
     onError && onError()
   }
 }
@@ -182,7 +190,7 @@ const columns = [
   {
     title: '操作',
     key: 'actions',
-    width: 210,
+    width: 300,
     align: 'center',
     render: (row) => [
       withDirectives(
@@ -190,6 +198,18 @@ const columns = [
           NButton,
           {
             size: 'small',
+            onClick: () => openChanges(row),
+          },
+          { default: () => '变更记录' }
+        ),
+        [[vPermission, 'get/api/v1/employee/get']]
+      ),
+      withDirectives(
+        h(
+          NButton,
+          {
+            size: 'small',
+            style: 'margin-left:8px',
             onClick: () => openAttach(row),
           },
           { default: () => '附件' }
@@ -275,7 +295,10 @@ function handleExport() {
     <CrudTable
       ref="$table"
       v-model:query-items="queryItems"
+      column-setting
+      table-id="admin-employee"
       :columns="columns"
+      :locked-column-keys="['emp_no', 'name', 'actions']"
       :get-data="api.getEmployeeList"
     >
       <template #queryBar>
@@ -337,10 +360,18 @@ function handleExport() {
         :rules="rules"
       >
         <NFormItem label="工号" path="emp_no">
-          <NInput v-model:value="modalForm.emp_no" placeholder="请输入工号" />
+          <NInput
+            v-model:value="modalForm.emp_no"
+            maxlength="20"
+            placeholder="请输入工号（最多 20 个字符）"
+          />
         </NFormItem>
         <NFormItem label="姓名" path="name">
-          <NInput v-model:value="modalForm.name" placeholder="请输入姓名" />
+          <NInput
+            v-model:value="modalForm.name"
+            maxlength="50"
+            placeholder="请输入姓名（最多 50 个字符）"
+          />
         </NFormItem>
         <NFormItem label="性别" path="gender">
           <NSelect v-model:value="modalForm.gender" :options="genderOptions" />
@@ -354,16 +385,16 @@ function handleExport() {
           />
         </NFormItem>
         <NFormItem label="职位" path="position">
-          <NInput v-model:value="modalForm.position" placeholder="请输入职位" />
+          <NInput v-model:value="modalForm.position" maxlength="100" placeholder="请输入职位" />
         </NFormItem>
         <NFormItem label="入职日期" path="hire_date">
           <NInput v-model:value="modalForm.hire_date" placeholder="如 2026-01-01" />
         </NFormItem>
         <NFormItem label="手机" path="phone">
-          <NInput v-model:value="modalForm.phone" placeholder="请输入手机号" />
+          <NInput v-model:value="modalForm.phone" maxlength="20" placeholder="请输入手机号" />
         </NFormItem>
         <NFormItem label="邮箱" path="email">
-          <NInput v-model:value="modalForm.email" placeholder="请输入邮箱" />
+          <NInput v-model:value="modalForm.email" maxlength="100" placeholder="请输入邮箱" />
         </NFormItem>
         <NFormItem label="绑定账号" path="user_id">
           <NSelect
@@ -385,6 +416,12 @@ function handleExport() {
         </NFormItem>
       </NForm>
     </CrudModal>
+    <FieldChangeDrawer
+      v-model:show="changeVisible"
+      :entity-id="changeEntity?.id"
+      :title="changeEntity ? `${changeEntity.emp_no} ${changeEntity.name}` : ''"
+      :fetcher="api.getEmployeeById"
+    />
     <NModal v-model:show="attachVisible" preset="card" title="员工附件" style="width: 520px">
       <p v-if="attachEmp" style="margin-bottom: 8px">{{ attachEmp.emp_no }} {{ attachEmp.name }}</p>
       <NUpload :show-file-list="false" :custom-request="onAttachUpload">

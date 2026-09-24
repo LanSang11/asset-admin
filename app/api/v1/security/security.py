@@ -19,10 +19,12 @@ from app.services.tls_cert import tls_renew, tls_status
 from app.services.verification_policy import (
     OPERATION_DEFINITIONS,
     VALID_MODES,
+    normalize_acceptance_duration_minutes,
     policies_payload,
     set_acceptance_mode,
 )
 from app.settings.config import settings
+from app.utils.crypto import get_totp_secret
 from app.utils.geoip import format_location
 from app.utils.security_risk import tag_catalog
 from app.utils.request_info import client_ip, device_hash, user_agent
@@ -53,6 +55,7 @@ class VerificationPoliciesIn(BaseModel):
 
 class AcceptanceModeIn(BaseModel):
     enabled: bool
+    duration_minutes: Optional[int] = None
 
 
 def _event_filters(
@@ -357,7 +360,8 @@ async def update_verification_policies(
                 using_db=connection,
             )
         settings_obj, _ = await VerificationSettings.get_or_create(id=1, using_db=connection)
-        settings_obj.force_superuser = body.login.force_superuser
+        ignored_force_off = body.login.force_superuser is False
+        settings_obj.force_superuser = True
         settings_obj.role_ids = role_ids
         settings_obj.password_max_days = int(body.password_rotate.max_days or 0)
         deadline = body.password_rotate.deadline
@@ -365,6 +369,9 @@ async def update_verification_policies(
             deadline = deadline.replace(tzinfo=timezone.utc)
         settings_obj.password_deadline = deadline
         await settings_obj.save(using_db=connection)
+    policy_detail = "更新二次验证策略"
+    if ignored_force_off:
+        policy_detail += "；已忽略关闭超级管理员登录强制 TOTP 的请求"
     await log_security_event(
         event_type="verification_policy_update",
         username=current_user.username,
@@ -372,23 +379,38 @@ async def update_verification_policies(
         ip=client_ip(request),
         user_agent=user_agent(request),
         device_hash=device_hash(request),
-        detail="更新二次验证策略",
+        detail=policy_detail,
         success=True,
     )
     return Success(data=await policies_payload(), msg="二次验证策略已更新")
 
 
-@router.put("/acceptance-mode", summary="开启或关闭限时验收模式")
+@router.put("/acceptance-mode", summary="开启或关闭临时免登录动态码")
 async def update_acceptance_mode(
     body: AcceptanceModeIn,
     request: Request,
     current_user: User = DependSuperUser,
 ):
+    minutes = None
     if body.enabled:
-        if not (getattr(current_user, "totp_enabled", False) and getattr(current_user, "totp_secret", None)):
-            raise HTTPException(status_code=403, detail="请先绑定动态验证器后再开启验收模式")
+        try:
+            minutes = normalize_acceptance_duration_minutes(body.duration_minutes)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if not (getattr(current_user, "totp_enabled", False) and get_totp_secret(current_user)):
+            raise HTTPException(status_code=403, detail="请先绑定动态验证器后再开启临时免登录动态码")
         current_user = await require_step_up("acceptance_mode_update", request, current_user)
-    status = await set_acceptance_mode(body.enabled)
+    status = await set_acceptance_mode(
+        body.enabled,
+        duration_minutes=minutes,
+        enabled_by=current_user.username if body.enabled else None,
+    )
+    if body.enabled:
+        detail = f"开启临时免登录动态码 {status['duration_minutes']} 分钟，到期 {status.get('expires_at')}"
+        msg = f"已开启 {status['duration_minutes']} 分钟临时免登录动态码，到期自动恢复登录动态码"
+    else:
+        detail = "关闭临时免登录动态码"
+        msg = "临时免登录动态码已关闭，登录恢复动态码"
     await log_security_event(
         event_type="acceptance_mode",
         username=current_user.username,
@@ -396,13 +418,10 @@ async def update_acceptance_mode(
         ip=client_ip(request),
         user_agent=user_agent(request),
         device_hash=device_hash(request),
-        detail="开启限时验收模式" if body.enabled else "关闭限时验收模式",
+        detail=detail,
         success=True,
     )
-    return Success(
-        data=status,
-        msg="已开启 2 小时验收模式，到期自动恢复登录动态码" if body.enabled else "验收模式已关闭，登录恢复动态码",
-    )
+    return Success(data=status, msg=msg)
 
 
 @router.get("/tls", summary="查看 HTTPS 证书状态")

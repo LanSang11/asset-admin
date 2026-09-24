@@ -2,8 +2,8 @@ from pydantic import BaseModel, Field
 
 
 class BaseDept(BaseModel):
-    name: str = Field(..., description="部门名称", example="研发中心")
-    desc: str = Field("", description="备注", example="研发中心")
+    name: str = Field(..., min_length=1, max_length=20, description="部门名称", example="研发中心")
+    desc: str = Field("", max_length=500, description="备注", example="研发中心")
     order: int = Field(0, description="排序")
     parent_id: int = Field(0, description="父部门ID")
 

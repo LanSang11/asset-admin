@@ -151,5 +151,169 @@ class AuthControlVersionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ctx.exception.status_code, 401)
 
 
+@unittest.skipUnless(HAS_DEPS, "本机未安装 fastapi/tortoise/jwt 依赖")
+class ForceLogoutTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        os.environ.setdefault("SHOW_DOCS", "1")
+        from app.models import admin  # noqa: F401
+        from app.models import business  # noqa: F401
+
+        await Tortoise.init(
+            db_url="sqlite://:memory:",
+            modules={"models": ["app.models.admin", "app.models.business"]},
+        )
+        await Tortoise.generate_schemas()
+        from app.models.admin import User
+
+        self.admin = await User.create(
+            username="admin",
+            email="admin@t.com",
+            password="x",
+            is_superuser=True,
+            is_active=True,
+            must_change_password=False,
+            totp_enabled=True,
+            auth_version=0,
+        )
+        self.target = await User.create(
+            username="qa01",
+            email="qa01@t.com",
+            password="x",
+            is_superuser=False,
+            is_active=True,
+            must_change_password=False,
+            totp_enabled=False,
+            auth_version=0,
+        )
+        self.staff = await User.create(
+            username="staff1",
+            email="staff1@t.com",
+            password="x",
+            is_superuser=False,
+            is_active=True,
+            must_change_password=False,
+            totp_enabled=False,
+            auth_version=0,
+        )
+
+    async def asyncTearDown(self):
+        await Tortoise.close_connections()
+
+    def _req(self, step_up_token=None):
+        class _Client:
+            host = "127.0.0.1"
+
+        class _Req:
+            def __init__(self, token):
+                self.headers = {"user-agent": "auth1-test"}
+                if token:
+                    self.headers["X-Step-Up-Token"] = token
+                self.client = _Client()
+
+        return _Req(step_up_token)
+
+    def _token(self, user, version=None, totp_verified=False):
+        from app.settings import settings
+
+        payload = {
+            "user_id": user.id,
+            "username": user.username,
+            "is_superuser": bool(user.is_superuser),
+            "auth_version": 0 if version is None else version,
+            "totp_verified": totp_verified,
+            "exp": datetime.now(timezone.utc) + timedelta(hours=1),
+        }
+        return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+
+    async def _authed(self, token):
+        from fastapi import Request
+
+        from app.core.dependency import AuthControl
+
+        request = MagicMock(spec=Request)
+        request.url.path = "/api/v1/base/userinfo"
+        return await AuthControl.is_authed(request, token)
+
+    async def _force_logout(self, actor, target_id, with_step_up=True):
+        from app.api.v1.users.users import force_logout
+        from app.core.dependency import require_step_up
+        from app.core.step_up import step_up_store
+
+        token = None
+        if with_step_up:
+            token, _ = step_up_store.issue(actor.id, "user_update_security", "totp")
+        request = self._req(token)
+        if with_step_up:
+            actor = await require_step_up("user_update_security", request, actor)
+        return await force_logout(request, user_id=target_id, current_user=actor)
+
+    async def test_force_logout_bumps_target_only_and_keeps_admin_session(self):
+        from app.models.admin import SecurityEvent
+
+        target_token = self._token(self.target, version=0)
+        admin_token = self._token(self.admin, version=0, totp_verified=True)
+        await self._authed(target_token)
+        await self._authed(admin_token)
+
+        resp = await self._force_logout(self.admin, self.target.id)
+        self.assertEqual(resp.status_code, 200)
+
+        await self.target.refresh_from_db()
+        await self.admin.refresh_from_db()
+        self.assertEqual(self.target.auth_version, 1)
+        self.assertEqual(self.admin.auth_version, 0)
+
+        from fastapi import HTTPException
+
+        with self.assertRaises(HTTPException) as ctx:
+            await self._authed(target_token)
+        self.assertEqual(ctx.exception.status_code, 401)
+        self.assertEqual(ctx.exception.detail, "登录已过期")
+
+        still_admin = await self._authed(admin_token)
+        self.assertEqual(still_admin.id, self.admin.id)
+
+        events = await SecurityEvent.filter(event_type="force_logout").all()
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].username, "admin")
+        self.assertIn("qa01", events[0].detail)
+        self.assertNotIn("totp", (events[0].detail or "").lower())
+
+    async def test_cannot_kick_self(self):
+        from fastapi import HTTPException
+
+        with self.assertRaises(HTTPException) as ctx:
+            await self._force_logout(self.admin, self.admin.id)
+        self.assertEqual(ctx.exception.status_code, 400)
+        await self.admin.refresh_from_db()
+        self.assertEqual(self.admin.auth_version, 0)
+
+    async def test_non_superuser_forbidden(self):
+        from fastapi import HTTPException
+
+        with self.assertRaises(HTTPException) as ctx:
+            await self._force_logout(self.staff, self.target.id)
+        self.assertEqual(ctx.exception.status_code, 403)
+        await self.target.refresh_from_db()
+        self.assertEqual(self.target.auth_version, 0)
+
+    async def test_missing_step_up_is_403(self):
+        from fastapi import HTTPException
+
+        from app.core.dependency import require_step_up
+
+        with self.assertRaises(HTTPException) as ctx:
+            await require_step_up("user_update_security", self._req(None), self.admin)
+        self.assertEqual(ctx.exception.status_code, 403)
+
+    async def test_does_not_add_nineteenth_policy(self):
+        from app.services.verification_policy import OPERATION_DEFINITIONS
+
+        keys = [item[0] for item in OPERATION_DEFINITIONS]
+        self.assertEqual(len(OPERATION_DEFINITIONS), 18)
+        self.assertIn("user_update_security", keys)
+        self.assertNotIn("user_force_logout", keys)
+
+
 if __name__ == "__main__":
     unittest.main()

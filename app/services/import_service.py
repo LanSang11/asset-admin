@@ -15,6 +15,26 @@ IMPORT_MAX_ROWS = 500
 
 HEADERS = ["资产编号", "名称", "分类", "型号", "序列号", "采购日期", "质保到期", "价格(元)", "状态", "存放位置", "领用人ID", "备注"]
 
+# 只接受语义明确、不会改变业务含义的有限别名；未知列保持原名并在读取时忽略。
+HEADER_ALIASES = {
+    "资产编码": "资产编号",
+    "资产名称": "名称",
+    "资产类别": "分类",
+    "规格型号": "型号",
+    "SN": "序列号",
+    "SN码": "序列号",
+    "购置日期": "采购日期",
+    "保修到期": "质保到期",
+    "质保日期": "质保到期",
+    "单价": "价格(元)",
+    "价格": "价格(元)",
+    "资产状态": "状态",
+    "位置": "存放位置",
+    "使用人ID": "领用人ID",
+    "领用员工ID": "领用人ID",
+    "说明": "备注",
+}
+
 STATUS_MAP = {"在用": 1, "闲置": 2, "维修": 3, "报废": 4, "1": 1, "2": 2, "3": 3, "4": 4}
 
 
@@ -47,15 +67,20 @@ def _parse_status(s: str) -> int:
     raise ValueError(f"状态无效: {s}")
 
 
-def parse_csv_bytes(raw: bytes) -> list[dict]:
+def parse_csv_bytes(raw: bytes) -> dict[str, Any]:
     text = raw.decode("utf-8-sig")
     reader = csv.DictReader(io.StringIO(text))
     if not reader.fieldnames:
         raise ValueError("CSV 无表头")
-    fields = [h.strip().lstrip("\ufeff") for h in reader.fieldnames]
+
+    source_fields = [(h or "").strip().lstrip("\ufeff") for h in reader.fieldnames]
+    fields = [HEADER_ALIASES.get(h, h) for h in source_fields]
+    duplicates = sorted({h for h in fields if h and fields.count(h) > 1})
+    if duplicates:
+        raise ValueError("列映射后重复: " + ",".join(duplicates))
+
+    reader.fieldnames = fields
     missing = [h for h in ("资产编号", "名称") if h not in fields]
-    if missing:
-        raise ValueError("缺少必要列: " + ",".join(missing))
     rows = []
     for i, row in enumerate(reader, start=2):
         if i - 1 > IMPORT_MAX_ROWS:
@@ -64,14 +89,30 @@ def parse_csv_bytes(raw: bytes) -> list[dict]:
         if not any(mapped.values()):
             continue
         rows.append({"line": i, "raw": mapped})
-    return rows
+    mappings = [
+        {"source": source, "target": target}
+        for source, target in zip(source_fields, fields)
+        if source and source != target
+    ]
+    return {"rows": rows, "missing_required": missing, "header_mappings": mappings}
 
 
 async def import_assets(raw: bytes, *, commit: bool = False) -> dict[str, Any]:
-    parsed = parse_csv_bytes(raw)
+    csv_data = parse_csv_bytes(raw)
+    parsed = csv_data["rows"]
+    missing_required = csv_data["missing_required"]
     existing = set(await Asset.all().values_list("asset_no", flat=True))
     ok, skipped, errors = [], [], []
     to_create = []
+
+    if missing_required and not parsed:
+        errors.append(
+            {
+                "line": 1,
+                "asset_no": "",
+                "reason": "缺少必要列: " + ",".join(missing_required),
+            }
+        )
 
     for item in parsed:
         line = item["line"]
@@ -79,6 +120,8 @@ async def import_assets(raw: bytes, *, commit: bool = False) -> dict[str, Any]:
         no = (r.get("资产编号") or "").strip()
         name = (r.get("名称") or "").strip()
         try:
+            if missing_required:
+                raise ValueError("缺少必要列: " + ",".join(missing_required))
             if not no or not name:
                 raise ValueError("资产编号和名称不能为空")
             if no in existing or any(x["asset_no"] == no for x in to_create):
@@ -128,7 +171,8 @@ async def import_assets(raw: bytes, *, commit: bool = False) -> dict[str, Any]:
         "skipped": len(skipped),
         "errors": len(errors),
         "created": created,
-        "ok_rows": ok[:50],
-        "skipped_rows": skipped[:50],
-        "error_rows": errors[:50],
+        "header_mappings": csv_data["header_mappings"],
+        "ok_rows": ok,
+        "skipped_rows": skipped,
+        "error_rows": errors,
     }

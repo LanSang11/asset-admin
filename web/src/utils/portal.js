@@ -7,8 +7,9 @@ export function resolvePortal(userInfo = {}) {
     return userInfo.portal
   }
   if (userInfo?.is_superuser) return 'admin'
-  const roleNames = userInfo?.role_names
-    || (userInfo?.roles || []).map((r) => (typeof r === 'string' ? r : r?.name)).filter(Boolean)
+  const roleNames =
+    userInfo?.role_names ||
+    (userInfo?.roles || []).map((r) => (typeof r === 'string' ? r : r?.name)).filter(Boolean)
   if (roleNames.includes('管理员')) return 'admin'
   return 'work'
 }
@@ -36,15 +37,61 @@ export function canWorkUserAccessPath(path = '') {
 }
 
 /** 管理端专属路径前缀（员工直输 URL 应拦截） */
-export const ADMIN_ONLY_PATH_PREFIXES = [
-  '/workbench',
-  '/system',
-  '/business',
-]
+export const ADMIN_ONLY_PATH_PREFIXES = ['/workbench', '/system', '/business']
 
 /** 管理壳/站点根：work 用户应拉回工作台，不要停在空壳 */
 export function isAdminLandingPath(path = '') {
   const p = String(path || '').split('?')[0]
   if (p === '/') return true
   return ADMIN_ONLY_PATH_PREFIXES.some((prefix) => p === prefix)
+}
+
+function firstRedirectValue(raw) {
+  if (Array.isArray(raw)) return raw[0]
+  return raw
+}
+
+/**
+ * 登录成功后的落点。站点根 `/` 与 `/login` 一律回 portal 首页，
+ * 禁止再 push `/`（RootPortal 是空组件，且改写当前 query 会冲掉导航）。
+ */
+export function resolvePostLoginLocation(redirect, portal) {
+  const home = getHomePath(portal)
+  const raw = String(firstRedirectValue(redirect) || '').trim()
+  if (!raw) return home
+
+  let parsed
+  try {
+    const isAbs = /^https?:\/\//i.test(raw)
+    if (isAbs) {
+      const url = new URL(raw)
+      if (
+        typeof window === 'undefined' ||
+        !window.location ||
+        url.origin !== window.location.origin
+      ) {
+        return home
+      }
+      parsed = url
+    } else if (raw.startsWith('/')) {
+      parsed = new URL(raw, 'http://local.invalid')
+    } else {
+      return home
+    }
+  } catch {
+    return home
+  }
+
+  const path = parsed.pathname || '/'
+  if (path === '/' || path === '/login') return home
+  if (portal === 'work' && (!canWorkUserAccessPath(path) || isAdminLandingPath(path))) {
+    return home
+  }
+
+  const query = {}
+  parsed.searchParams.forEach((value, key) => {
+    if (key === 'redirect') return
+    query[key] = value
+  })
+  return Object.keys(query).length ? { path, query } : path
 }

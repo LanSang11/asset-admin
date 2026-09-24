@@ -7,6 +7,7 @@ import CommonPage from '@/components/page/CommonPage.vue'
 import QueryBarItem from '@/components/query-bar/QueryBarItem.vue'
 import CrudTable from '@/components/table/CrudTable.vue'
 import api from '@/api'
+import { shouldShowLocalError } from '@/utils/http/validation-errors'
 
 defineOptions({ name: '审批中心' })
 
@@ -55,7 +56,7 @@ async function submitApprove() {
     approveVisible.value = false
     $table.value?.handleSearch()
   } catch (error) {
-    $message.error(error?.msg || error?.message || '审批失败')
+    if (shouldShowLocalError(error)) $message.error(error?.msg || error?.message || '审批失败')
   } finally {
     approveLoading.value = false
   }

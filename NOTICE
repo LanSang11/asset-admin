@@ -1,6 +1,9 @@
 NOTICE
 
-Third-party components used by this project (non-exhaustive):
+This NOTICE is for attribution only. It does not grant trademark rights.
+It does not state that any company authorized this publication.
+
+Third-party components (non-exhaustive):
 
 - Vue 3 — MIT — https://github.com/vuejs/core
 - Naive UI — MIT — https://github.com/tusen-ai/naive-ui

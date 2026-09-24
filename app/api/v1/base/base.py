@@ -11,6 +11,7 @@ from app.core.ctx import CTX_USER_ID
 from app.core.dependency import DependAuth
 from app.core.gateway import unban_ip_after_login
 from app.core.login_guard import login_guard, step_up_guard
+from app.core.login_totp_challenge import challenge_payload, login_totp_challenge
 from app.core.slide_captcha import slide_captcha
 from app.core.step_up import step_up_store
 from app.core.totp_utils import generate_secret, provisioning_uri, verify_totp
@@ -27,6 +28,7 @@ from app.services.verification_policy import (
     operation_mode,
     password_must_rotate,
 )
+from app.utils.crypto import get_totp_secret, set_totp_secret
 from app.utils.jwt_utils import create_access_token
 from app.utils.password import get_password_hash, verify_password
 from app.utils.request_info import client_ip, device_hash, user_agent
@@ -116,6 +118,7 @@ async def login_access_token(credentials: CredentialsSchema, request: Request):
         languages=langs,
     )
     username = (credentials.username or "").strip()
+    challenge_id = (getattr(credentials, "login_challenge", None) or "").strip()
 
     async def _fail_event(detail: str, success: bool = False, uid: Optional[int] = None):
         await log_security_event(
@@ -130,12 +133,136 @@ async def login_access_token(credentials: CredentialsSchema, request: Request):
             timezone=tz,
         )
 
+    def _expired_challenge(msg: str = "登录已过期，请重新登录"):
+        return Fail(
+            code=400,
+            msg=msg,
+            data={**_login_risk_data(username, ip), "challenge_expired": True},
+        )
+
+    async def _issue_session(
+        user: User,
+        *,
+        security_setup_only: bool,
+        totp_verified: bool,
+        acceptance_login: bool,
+        has_recovery: bool,
+    ):
+        login_guard.reset(user.username, ip)
+        unban_ip_after_login(ip)
+        await user_controller.update_last_login(user.id)
+        await log_security_event(
+            event_type="login_success",
+            username=user.username,
+            user_id=user.id,
+            ip=ip,
+            user_agent=ua,
+            device_hash=dhash,
+            detail=(
+                "登录成功（仅安全设置）"
+                if security_setup_only
+                else "登录成功（验收模式，未校验动态码）"
+                if acceptance_login
+                else "登录成功"
+            ),
+            success=True,
+            timezone=tz,
+        )
+        access_token_expires = timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.now(timezone.utc) + access_token_expires
+        data = JWTOut(
+            access_token=create_access_token(
+                data=_token_payload(
+                    user,
+                    expire,
+                    security_setup_only=security_setup_only,
+                    totp_verified=totp_verified,
+                )
+            ),
+            username=user.username,
+        )
+        resp_data = data.model_dump()
+        if await password_must_rotate(user) and not bool(getattr(user, "must_change_password", False)):
+            user.must_change_password = True
+            await user.save(update_fields=["must_change_password"])
+        resp_data["must_change_password"] = bool(getattr(user, "must_change_password", False))
+        resp_data["totp_enabled"] = bool(getattr(user, "totp_enabled", False))
+        resp_data["recovery_question_set"] = has_recovery
+        resp_data["security_setup_only"] = security_setup_only
+        resp_data["acceptance_mode"] = await acceptance_mode_status()
+        return Success(data=resp_data)
+
     # 暴力破解防护：5 次失败锁定 5 分钟
     try:
         login_guard.check(username, ip)
     except HTTPException as e:
         await _fail_event(f"账号锁定: {e.detail}")
         return Fail(code=e.status_code, msg=e.detail, data=_login_risk_data(username, ip))
+
+    if challenge_id:
+        ch = login_totp_challenge.get(challenge_id)
+        if not ch:
+            await _fail_event("登录挑战无效或已过期")
+            return _expired_challenge()
+        if ch.username.casefold() != username.casefold():
+            login_totp_challenge.invalidate(challenge_id)
+            await _fail_event("登录挑战账号不匹配")
+            return _expired_challenge("登录已过期，请重新登录")
+        user = await User.filter(id=ch.user_id).first()
+        if not user or not user.is_active:
+            login_totp_challenge.invalidate(challenge_id)
+            await _fail_event("登录挑战账号不可用", uid=ch.user_id)
+            return _expired_challenge()
+        if int(getattr(user, "auth_version", 0) or 0) != int(ch.auth_version):
+            login_totp_challenge.invalidate(challenge_id)
+            await _fail_event("登录挑战认证版本已变化", uid=user.id)
+            return _expired_challenge()
+        has_totp = bool(getattr(user, "totp_enabled", False) and get_totp_secret(user))
+        has_recovery = bool(getattr(user, "recovery_question", None) and getattr(user, "recovery_answer_hash", None))
+        if not has_totp:
+            login_totp_challenge.invalidate(challenge_id)
+            await _fail_event("登录挑战期间验证器已解绑", uid=user.id)
+            return _expired_challenge()
+        code = (credentials.totp_code or "").strip()
+        if not code:
+            return Fail(
+                code=400,
+                msg="请输入二次验证码",
+                data={
+                    **_login_risk_data(username, ip),
+                    "require_totp": True,
+                    "recovery_question": ch.recovery_question,
+                },
+            )
+        if not verify_totp(get_totp_secret(user), code):
+            login_guard.record_failure(username, ip)
+            await _fail_event("TOTP 错误", uid=user.id)
+            result = login_totp_challenge.record_failure(challenge_id)
+            if result == "exhausted":
+                return Fail(
+                    code=400,
+                    msg="二次验证码错误次数过多，请重新登录",
+                    data={**_login_risk_data(username, ip), "challenge_expired": True},
+                )
+            return Fail(
+                code=400,
+                msg="二次验证码错误",
+                data={
+                    **_login_risk_data(username, ip),
+                    "require_totp": True,
+                    "recovery_question": ch.recovery_question,
+                },
+            )
+        if not login_totp_challenge.consume(challenge_id):
+            await _fail_event("登录挑战消费失败", uid=user.id)
+            return _expired_challenge()
+        return await _issue_session(
+            user,
+            security_setup_only=False,
+            totp_verified=True,
+            acceptance_login=False,
+            has_recovery=has_recovery,
+        )
 
     # 严格：每次登录必须通过滑块。浏览器先预验证换取一次性票据；
     # 旧 captcha_id/x 提交仅保留给现有自动化验收脚本。
@@ -160,14 +287,14 @@ async def login_access_token(credentials: CredentialsSchema, request: Request):
         return Fail(code=400, msg="用户名或密码错误", data=_login_risk_data(username, ip))
 
     forced_totp = await login_totp_required(user)
-    has_totp = bool(getattr(user, "totp_enabled", False) and getattr(user, "totp_secret", None))
+    has_totp = bool(getattr(user, "totp_enabled", False) and get_totp_secret(user))
     has_recovery = bool(getattr(user, "recovery_question", None) and getattr(user, "recovery_answer_hash", None))
     security_setup_only = bool(forced_totp and not (has_totp and has_recovery))
     totp_verified = False
+    acceptance_login = False
 
     # 已绑定账号仍需 TOTP；强制账号未完成绑定时只签发安全设置受限会话，避免锁死。
     # 限时验收模式只跳过登录动态码，JWT 不带 totp_verified，到期后旧会话立即失效。
-    acceptance_login = False
     if has_totp and not security_setup_only:
         if await acceptance_mode_active():
             acceptance_login = True
@@ -175,18 +302,18 @@ async def login_access_token(credentials: CredentialsSchema, request: Request):
         else:
             code = (credentials.totp_code or "").strip()
             if not code:
-                # 密码已对但不记失败锁定；前端进入第二步，不是登录失败
-                return Fail(
-                    code=400,
-                    msg="请输入二次验证码",
-                    data={
-                        **_login_risk_data(username, ip),
-                        "require_totp": True,
-                        "totp_challenge": True,
-                        "recovery_question": user.recovery_question if has_recovery else None,
-                    },
+                ch = login_totp_challenge.issue(
+                    user_id=user.id,
+                    username=user.username,
+                    ip=ip,
+                    auth_version=int(getattr(user, "auth_version", 0) or 0),
+                    recovery_question=user.recovery_question if has_recovery else None,
                 )
-            if not verify_totp(user.totp_secret, code):
+                return Success(
+                    msg="密码已通过，请输入验证器 6 位动态码",
+                    data=challenge_payload(ch),
+                )
+            if not verify_totp(get_totp_secret(user), code):
                 login_guard.record_failure(username, ip)
                 await _fail_event("TOTP 错误", uid=user.id)
                 return Fail(
@@ -200,51 +327,13 @@ async def login_access_token(credentials: CredentialsSchema, request: Request):
                 )
             totp_verified = True
 
-    login_guard.reset(username, ip)
-    unban_ip_after_login(ip)
-    await user_controller.update_last_login(user.id)
-    await log_security_event(
-        event_type="login_success",
-        username=user.username,
-        user_id=user.id,
-        ip=ip,
-        user_agent=ua,
-        device_hash=dhash,
-        detail=(
-            "登录成功（仅安全设置）"
-            if security_setup_only
-            else "登录成功（验收模式，未校验动态码）"
-            if acceptance_login
-            else "登录成功"
-        ),
-        success=True,
-        timezone=tz,
+    return await _issue_session(
+        user,
+        security_setup_only=security_setup_only,
+        totp_verified=totp_verified,
+        acceptance_login=acceptance_login,
+        has_recovery=has_recovery,
     )
-    access_token_expires = timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
-    expire = datetime.now(timezone.utc) + access_token_expires
-
-    data = JWTOut(
-        access_token=create_access_token(
-            data=_token_payload(
-                user,
-                expire,
-                security_setup_only=security_setup_only,
-                totp_verified=totp_verified,
-            )
-        ),
-        username=user.username,
-    )
-    resp_data = data.model_dump()
-    # 首次登录 / 管理员重置 / 到期换密（默认关）都走同一 must_change_password
-    if await password_must_rotate(user) and not bool(getattr(user, "must_change_password", False)):
-        user.must_change_password = True
-        await user.save(update_fields=["must_change_password"])
-    resp_data["must_change_password"] = bool(getattr(user, "must_change_password", False))
-    resp_data["totp_enabled"] = bool(getattr(user, "totp_enabled", False))
-    resp_data["recovery_question_set"] = has_recovery
-    resp_data["security_setup_only"] = security_setup_only
-    resp_data["acceptance_mode"] = await acceptance_mode_status()
-    return Success(data=resp_data)
 
 
 @router.get("/userinfo", summary="查看用户信息", dependencies=[DependAuth])
@@ -411,7 +500,7 @@ async def step_up_requirement(operation_key: str = Query(..., min_length=1, max_
         data={
             "operation_key": operation_key,
             "mode": mode,
-            "totp_enabled": bool(user.totp_enabled and user.totp_secret),
+            "totp_enabled": bool(user.totp_enabled and get_totp_secret(user)),
         }
     )
 
@@ -435,9 +524,9 @@ async def step_up_verify(body: StepUpIn, request: Request):
     if mode == "password":
         verified = bool(body.password and verify_password(body.password, user.password))
     elif mode == "totp":
-        if not user.totp_enabled or not user.totp_secret:
+        if not user.totp_enabled or not get_totp_secret(user):
             raise HTTPException(status_code=403, detail="请先绑定动态验证器后再执行此操作")
-        verified = bool(body.totp_code and verify_totp(user.totp_secret, body.totp_code))
+        verified = bool(body.totp_code and verify_totp(get_totp_secret(user), body.totp_code))
     if not verified:
         step_up_guard.record_failure(user.username, ip)
         await log_security_event(
@@ -484,7 +573,7 @@ async def totp_setup():
     # 暂存 secret 到用户字段但未启用，直到 confirm；若已启用则拒绝
     if user.totp_enabled:
         return Fail(msg="已启用二次验证，请先关闭后再重新绑定")
-    user.totp_secret = secret
+    set_totp_secret(user, secret)
     user.totp_enabled = False
     await user.save()
     return Success(
@@ -499,7 +588,7 @@ async def totp_confirm(body: TotpConfirmIn, request: Request):
     user = await user_controller.get(user_id)
     if user.totp_enabled:
         return Fail(msg="动态验证器已启用，不能通过确认接口替换现有绑定")
-    secret = (body.secret or user.totp_secret or "").strip()
+    secret = (body.secret or get_totp_secret(user) or "").strip()
     if not secret:
         return Fail(msg="请先调用 setup 获取密钥")
     if not verify_totp(secret, body.code):
@@ -507,7 +596,7 @@ async def totp_confirm(body: TotpConfirmIn, request: Request):
     answer = _normalize_recovery_answer(body.recovery_answer)
     if len(answer) < 8:
         return Fail(msg="安全答案至少需要 8 个字符")
-    user.totp_secret = secret
+    set_totp_secret(user, secret)
     user.totp_enabled = True
     user.recovery_question = body.recovery_question.strip()
     user.recovery_answer_hash = get_password_hash(answer)
@@ -531,9 +620,9 @@ async def totp_confirm(body: TotpConfirmIn, request: Request):
 @router.post("/totp/recovery-question", summary="设置 TOTP 恢复安全问题", dependencies=[DependAuth])
 async def set_totp_recovery_question(body: RecoveryQuestionIn, request: Request):
     user = await user_controller.get(CTX_USER_ID.get())
-    if not user.totp_enabled or not user.totp_secret:
+    if not user.totp_enabled or not get_totp_secret(user):
         return Fail(msg="请先绑定动态验证器")
-    if not verify_totp(user.totp_secret, body.totp_code):
+    if not verify_totp(get_totp_secret(user), body.totp_code):
         return Fail(msg="动态验证码错误")
     answer = _normalize_recovery_answer(body.answer)
     if len(answer) < 8:
@@ -622,7 +711,7 @@ async def recover_totp(body: TotpRecoverIn, request: Request):
         await _audit(user, "TOTP 恢复信息不正确", False)
         return Fail(code=400, msg="恢复信息不正确")
 
-    user.totp_secret = None
+    set_totp_secret(user, None)
     user.totp_enabled = False
     user.recovery_question = None
     user.recovery_answer_hash = None
@@ -655,9 +744,9 @@ async def totp_disable(body: TotpDisableIn, request: Request):
         raise HTTPException(status_code=403, detail="该账号受登录二次验证策略保护，不能自行关闭")
     if not verify_password(body.password, user.password):
         return Fail(msg="密码错误")
-    if user.totp_enabled and user.totp_secret and not verify_totp(user.totp_secret, body.code):
+    if user.totp_enabled and get_totp_secret(user) and not verify_totp(get_totp_secret(user), body.code):
         return Fail(msg="验证码错误")
-    user.totp_secret = None
+    set_totp_secret(user, None)
     user.totp_enabled = False
     user.recovery_question = None
     user.recovery_answer_hash = None

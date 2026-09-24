@@ -16,7 +16,7 @@ class BaseAsset(BaseModel):
     serial_no: str = Field("", max_length=100, description="序列号")
     purchase_date: Optional[date] = Field(None, description="采购日期")
     warranty_until: Optional[date] = Field(None, description="质保到期日")
-    price: Optional[Decimal] = Field(None, ge=0, max_digits=12, decimal_places=2, description="采购价格（元）")
+    price: Optional[Decimal] = Field(None, ge=0, max_digits=10, decimal_places=2, description="采购价格（元）")
 
     @field_validator("purchase_date", "warranty_until", mode="before")
     @classmethod

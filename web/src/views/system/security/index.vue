@@ -20,7 +20,6 @@ import {
   NSelect,
   NSpace,
   NStatistic,
-  NSwitch,
   NTabPane,
   NTabs,
   NTag,
@@ -56,10 +55,25 @@ const verificationPolicy = ref({
   login: { force_superuser: true, role_ids: [] },
   roles: [],
   root_operations: [],
-  acceptance_mode: { active: false, expires_at: null, remaining_seconds: 0, duration_hours: 2 },
+  acceptance_mode: {
+    active: false,
+    expires_at: null,
+    remaining_seconds: 0,
+    duration_hours: 2,
+    duration_minutes: 120,
+    enabled_by: null,
+  },
   password_rotate: { max_days: 0, deadline: null, enabled: false },
 })
 const passwordDeadlineTs = ref(null)
+const acceptanceMinutes = ref(120)
+const ACCEPTANCE_PRESETS = [
+  { minutes: 30, label: '30 分钟' },
+  { minutes: 60, label: '1 小时' },
+  { minutes: 120, label: '2 小时' },
+  { minutes: 240, label: '4 小时' },
+  { minutes: 480, label: '8 小时' },
+]
 const acceptanceLoading = ref(false)
 const tlsLoading = ref(false)
 const tlsRenewing = ref(false)
@@ -100,6 +114,12 @@ function applyVerificationPayload(data = {}) {
     expires_at: null,
     remaining_seconds: 0,
     duration_hours: 2,
+    duration_minutes: 120,
+    enabled_by: null,
+  }
+  const parsedMinutes = Number(acceptance.duration_minutes)
+  if (Number.isFinite(parsedMinutes) && parsedMinutes > 0) {
+    acceptanceMinutes.value = parsedMinutes
   }
   const rotate = data.password_rotate || { max_days: 0, deadline: null, enabled: false }
   verificationPolicy.value = {
@@ -130,7 +150,7 @@ async function saveVerificationPolicies() {
         mode,
       })),
       login: {
-        force_superuser: verificationPolicy.value.login.force_superuser,
+        force_superuser: true,
         role_ids: verificationPolicy.value.login.role_ids,
       },
       password_rotate: {
@@ -160,15 +180,37 @@ function formatAcceptanceUntil(value) {
   return `${date.getMonth() + 1}/${date.getDate()} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
+function formatAcceptanceRemain(expiresAt) {
+  const ts = Date.parse(expiresAt)
+  if (!Number.isFinite(ts)) return ''
+  const ms = ts - Date.now()
+  if (ms <= 0) return '不足 1 分钟'
+  const total = Math.floor(ms / 1000)
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  if (hours > 0) return `${hours} 小时 ${minutes} 分`
+  if (minutes > 0) return `${minutes} 分`
+  return '不足 1 分钟'
+}
+
+function applyAcceptancePreset(minutes) {
+  acceptanceMinutes.value = minutes
+}
+
 async function enableAcceptanceMode() {
   acceptanceLoading.value = true
   try {
+    const raw = Number(acceptanceMinutes.value)
+    const duration_minutes = Number.isFinite(raw) ? raw : 120
     const res = await withStepUp('acceptance_mode_update', (headers) =>
-      api.updateAcceptanceMode({ enabled: true }, headers)
+      api.updateAcceptanceMode({ enabled: true, duration_minutes }, headers)
     )
     verificationPolicy.value.acceptance_mode = res.data
     userStore.setUserInfo({ acceptance_mode: res.data })
-    $message.success(res.msg || '验收模式已开启')
+    if (Number.isFinite(Number(res.data?.duration_minutes))) {
+      acceptanceMinutes.value = Number(res.data.duration_minutes)
+    }
+    $message.success(res.msg || '临时免登录动态码已开启')
   } catch (e) {
     /* 取消或失败 */
   } finally {
@@ -215,7 +257,7 @@ async function disableAcceptanceMode() {
     const res = await api.updateAcceptanceMode({ enabled: false })
     verificationPolicy.value.acceptance_mode = res.data
     userStore.setUserInfo({ acceptance_mode: res.data })
-    $message.success(res.msg || '验收模式已关闭')
+    $message.success(res.msg || '临时免登录动态码已关闭')
   } catch (e) {
     /* 取消或失败 */
   } finally {
@@ -271,7 +313,7 @@ const EVENT_LABEL = {
   reset_password: '重置密码',
   totp_bind: '绑定动态码',
   totp_disable: '关闭动态码',
-  acceptance_mode: '验收模式',
+  acceptance_mode: '临时免登录动态码',
   tls_renew: '证书续签',
   scan: '扫描',
   rate_limit: '限流',
@@ -959,20 +1001,58 @@ onMounted(() => {
         <NAlert type="warning" :bordered="false" class="mb-12">
           每个高危动作独立设置，互不联动。修改本页本身固定要求当前超级管理员输入动态验证码，不能关闭。
         </NAlert>
-        <NCard size="small" title="限时验收模式" class="mb-12">
+        <NCard size="small" title="临时免登录动态码" class="mb-12">
           <NAlert type="error" :bordered="false" class="mb-12">
-            只给开发/验收临时用。开启后 2 小时内，已绑定账号登录不再要动态码；到期自动恢复。导出、删资产、改策略等逐项验证和根保护都不会关。开启必须输入当前验证器动态码。
+            只在指定时段免除登录动态码。账号密码、滑块、导出、删资产、改策略等逐项验证和根保护都不会关。开启、延长、重设时长必须输入当前验证器动态码；提前关闭已登录超管即可。
           </NAlert>
           <p class="mb-12">
             当前状态：
             <strong>{{ verificationPolicy.acceptance_mode?.active ? '开启中' : '已关闭' }}</strong>
-            <span v-if="verificationPolicy.acceptance_mode?.active && verificationPolicy.acceptance_mode?.expires_at">
-              ，到期 {{ formatAcceptanceUntil(verificationPolicy.acceptance_mode.expires_at) }}
+            <span
+              v-if="
+                verificationPolicy.acceptance_mode?.active &&
+                verificationPolicy.acceptance_mode?.enabled_by
+              "
+            >
+              ，开启人 {{ verificationPolicy.acceptance_mode.enabled_by }}
+            </span>
+            <span
+              v-if="
+                verificationPolicy.acceptance_mode?.active &&
+                verificationPolicy.acceptance_mode?.expires_at
+              "
+            >
+              ，到期 {{ formatAcceptanceUntil(verificationPolicy.acceptance_mode.expires_at) }} ，剩余
+              {{ formatAcceptanceRemain(verificationPolicy.acceptance_mode.expires_at) }}
             </span>
           </p>
+          <NForm label-placement="left" label-width="120">
+            <NFormItem label="时长（分钟）">
+              <NInputNumber
+                v-model:value="acceptanceMinutes"
+                :min="15"
+                :max="480"
+                :step="15"
+                placeholder="默认 120"
+                style="width: 180px"
+              />
+            </NFormItem>
+            <NFormItem label="快捷档">
+              <NSpace>
+                <NButton
+                  v-for="item in ACCEPTANCE_PRESETS"
+                  :key="item.minutes"
+                  size="small"
+                  @click="applyAcceptancePreset(item.minutes)"
+                >
+                  {{ item.label }}
+                </NButton>
+              </NSpace>
+            </NFormItem>
+          </NForm>
           <NSpace>
             <NButton type="warning" :loading="acceptanceLoading" @click="enableAcceptanceMode">
-              验证动态码并开启 / 续期 2 小时
+              验证动态码并开启/重新计时
             </NButton>
             <NButton
               v-if="verificationPolicy.acceptance_mode?.active"
@@ -1005,7 +1085,12 @@ onMounted(() => {
         <NCard size="small" title="登录强制验证" class="mb-12">
           <NForm label-placement="left" label-width="180">
             <NFormItem label="超级管理员登录强制 TOTP">
-              <NSwitch v-model:value="verificationPolicy.login.force_superuser" />
+              <div>
+                <NTag type="success">固定开启</NTag>
+                <div class="verification-key">
+                  超级管理员登录必须使用动态码，不能从这里关掉。临时便利请用上方「临时免登录动态码」。
+                </div>
+              </div>
             </NFormItem>
             <NFormItem label="额外强制角色">
               <NSelect
@@ -1013,7 +1098,7 @@ onMounted(() => {
                 multiple
                 clearable
                 :options="verificationPolicy.roles.map((role) => ({ label: role.name, value: role.id }))"
-                placeholder="未选择时只按超级管理员开关执行"
+                placeholder="未选择时仅超级管理员登录强制动态码"
                 style="max-width: 520px"
               />
             </NFormItem>

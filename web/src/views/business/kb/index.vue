@@ -5,6 +5,7 @@ import CommonPage from '@/components/page/CommonPage.vue'
 import CrudTable from '@/components/table/CrudTable.vue'
 import { usePermissionStore, useUserStore } from '@/store'
 import api from '@/api'
+import { shouldShowLocalError } from '@/utils/http/validation-errors'
 
 defineOptions({ name: '知识库' })
 
@@ -74,7 +75,7 @@ async function onUpload({ file, onFinish, onError }) {
     $table.value?.handleSearch()
     onFinish && onFinish()
   } catch (e) {
-    $message.error(e?.message || e?.msg || '入库失败')
+    if (shouldShowLocalError(e)) $message.error(e?.message || e?.msg || '入库失败')
     onError && onError()
   }
 }
@@ -86,7 +87,7 @@ async function seedBuiltin() {
     $message.success(n ? `已导入内置操作说明（${n} 段）` : '已导入内置操作说明')
     $table.value?.handleSearch()
   } catch (e) {
-    $message.error(e?.message || e?.msg || '导入失败')
+    if (shouldShowLocalError(e)) $message.error(e?.message || e?.msg || '导入失败')
   }
 }
 
@@ -123,7 +124,7 @@ async function analyzeKb() {
     draftNotice.value = ''
     draftErrors.value = []
   } catch (e) {
-    $message.error(e?.message || e?.msg || '分析失败')
+    if (shouldShowLocalError(e)) $message.error(e?.message || e?.msg || '分析失败')
   } finally {
     stewardLoading.value = false
   }
@@ -140,7 +141,7 @@ async function draftGaps() {
       $message.info(draftNotice.value || '没有可生成的缺章')
     }
   } catch (e) {
-    $message.error(e?.message || e?.msg || '生成草稿失败')
+    if (shouldShowLocalError(e)) $message.error(e?.message || e?.msg || '生成草稿失败')
   } finally {
     stewardLoading.value = false
   }
@@ -154,7 +155,7 @@ async function confirmDraft(row) {
     $table.value?.handleSearch()
     await analyzeKb()
   } catch (e) {
-    $message.error(e?.message || e?.msg || '入库失败')
+    if (shouldShowLocalError(e)) $message.error(e?.message || e?.msg || '入库失败')
   }
 }
 

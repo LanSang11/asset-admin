@@ -38,7 +38,7 @@ class OssDemoScriptTests(unittest.TestCase):
 
     def test_blocks_wwwroot_paths(self):
         mod = self._load_mod()
-        self.assertTrue(mod._blocked(Path("/www/wwwroot/asset-system/db/db.sqlite3")))
+        self.assertTrue(mod._blocked(Path("/var/www/asset-system/db/db.sqlite3")))
         self.assertFalse(mod._blocked(Path(ROOT) / "app.db"))
 
     def test_bind_existing_roles_only(self):

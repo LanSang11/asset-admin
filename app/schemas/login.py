@@ -14,6 +14,8 @@ class CredentialsSchema(BaseModel):
     captcha_ticket: Optional[str] = Field(None, max_length=128, description="滑块预验证一次性票据")
     # 零成本 TOTP：启用后登录必填
     totp_code: Optional[str] = Field(None, description="TOTP 二次验证码")
+    # 密码+滑块通过后下发的短时挑战；完成动态码时不再消费滑块
+    login_challenge: Optional[str] = Field(None, max_length=128, description="登录二次验证短时票据")
     # 可选前端设备 hint（分辨率等），仅用于轻量 device_hash
     device_hint: Optional[str] = Field(None, max_length=128, description="可选设备提示")
     timezone: Optional[str] = Field(None, max_length=64, description="可选浏览器时区")

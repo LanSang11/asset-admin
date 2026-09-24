@@ -25,10 +25,17 @@ PAGE_HELP = {
     "工作台": "员工/主管入口。没有系统管理菜单。",
     "AI 助手": "独立对话页用你自己的 Key 闲聊。全站右上角抽屉才是主入口：先只读查询，再用你配置的模型把事实说成人话，默认关闭深度思考。",
     "知识库": "上传白名单文档后提问。中文先走词面检索，有合格向量再叠加语义。回答会列出引用；没有合格 embedding 时页面会说明降级。",
+    "报修": "查看和提交报修。可问助手查自己权限内的单据。",
+    "调拨": "查看和提交调拨。可问助手查自己权限内的单据。",
+    "盘点": "查看盘点进度。可问助手查自己权限内的单据。",
 }
 
 _STATUS = {1: "在用", 2: "闲置", 3: "维修", 4: "报废"}
 _USE_TYPE = {1: "领用", 2: "归还"}
+_REPAIR_STATUS = {1: "待主管", 2: "待管理员", 3: "维修中", 4: "已修复", 5: "已驳回"}
+_TRANSFER_STATUS = {1: "待主管", 2: "待管理员", 3: "通过", 4: "驳回"}
+_INVENTORY_STATUS = {1: "进行中", 2: "已结束"}
+_PENDING_HINTS = ("待审", "待我", "待审批")
 
 
 async def _context() -> Tuple[User, Optional[Employee], str]:
@@ -41,6 +48,86 @@ async def _context() -> Tuple[User, Optional[Employee], str]:
 
 def _scope_name(role: str) -> str:
     return {"admin": "company", "manager": "department"}.get(role, "self")
+
+
+def _ticket_scope(user_text: str) -> str:
+    text = user_text or ""
+    if any(token in text for token in _PENDING_HINTS):
+        return "pending"
+    return "all"
+
+
+def _empty_ticket(title: str, empty_line: str) -> dict[str, Any]:
+    return {"blocks": [{"title": title, "lines": [empty_line]}], "cards": [], "row_count": 0}
+
+
+def _ticket_unavailable(title: str) -> dict[str, Any]:
+    return {"blocks": [{"title": title, "lines": ["暂时查不到单据"]}], "cards": [], "row_count": 0}
+
+
+_ASSET_STOPWORDS = frozenset(
+    {
+        "我",
+        "有",
+        "哪些",
+        "什么",
+        "多少",
+        "查",
+        "查询",
+        "看看",
+        "一下",
+        "资产",
+        "流转",
+        "最近",
+        "谁",
+        "借了",
+        "闲置",
+        "在用",
+        "权限",
+        "范围",
+        "当前",
+        "匹配",
+        "记录",
+        "的",
+        "台",
+    }
+)
+_EMPLOYEE_STOPWORDS = frozenset(
+    {
+        "我",
+        "有",
+        "哪些",
+        "什么",
+        "查",
+        "查询",
+        "看看",
+        "一下",
+        "员工",
+        "人员",
+        "工号",
+        "谁是",
+        "查人",
+        "通讯录",
+        "的",
+    }
+)
+
+
+def _search_keyword(user_text: str, stopwords: set[str] | frozenset[str]) -> str:
+    """Strip spoken question words; leftover is the real search term (or empty)."""
+    text = user_text or ""
+    for mark in "，,？?。！!":
+        text = text.replace(mark, " ")
+    ordered = sorted((word for word in stopwords if word), key=len, reverse=True)
+    changed = True
+    while changed:
+        changed = False
+        for word in ordered:
+            if word in text:
+                text = text.replace(word, " ")
+                changed = True
+    leftover = " ".join(text.split())
+    return leftover
 
 
 async def run_tools(tool_names: list[str], *, user_text: str, page_context: dict[str, str]) -> dict[str, Any]:
@@ -87,12 +174,7 @@ async def tool_page_help(**kwargs) -> dict[str, Any]:
 async def tool_list_assets(*, user, emp, role, user_text, page_context) -> dict[str, Any]:
     from app.controllers.asset import asset_controller
 
-    keyword = ""
-    for token in (user_text or "").replace("，", " ").split():
-        if token.startswith("ZC") or token.isdigit() or (len(token) >= 2 and token not in {"最近", "谁", "借了", "资产"}):
-            if token not in {"最近", "哪些", "多少", "闲置", "在用"}:
-                keyword = token
-                break
+    keyword = _search_keyword(user_text, _ASSET_STOPWORDS)
     entity_id = str(page_context.get("entity_id") or "")
     if page_context.get("entity_type") == "asset" and entity_id.isdigit():
         keyword = ""
@@ -266,13 +348,7 @@ async def tool_search_kb(*, user_text, **kwargs) -> dict[str, Any]:
 async def tool_lookup_employees(*, user, emp, role, user_text, **kwargs) -> dict[str, Any]:
     from app.controllers.employee import employee_controller
 
-    keyword = ""
-    for token in (user_text or "").replace("，", " ").replace("？", " ").split():
-        if token in {"员工", "人员", "工号", "谁是", "查人", "通讯录", "查询", "一下", "有哪些"}:
-            continue
-        if len(token) >= 1:
-            keyword = token
-            break
+    keyword = _search_keyword(user_text, _EMPLOYEE_STOPWORDS)
     total, items = await employee_controller.list_employees(1, 8, keyword=keyword)
     lines = []
     for index, person in enumerate(items, start=1):
@@ -326,6 +402,102 @@ async def tool_suggest_filter(*, user, user_text, **kwargs) -> dict[str, Any]:
     }
 
 
+async def tool_list_repairs(*, user_text, **_kwargs) -> dict[str, Any]:
+    from fastapi.exceptions import HTTPException
+
+    from app.controllers.asset_repair import asset_repair_controller
+    from app.models.business import Asset
+
+    try:
+        _total, items = await asset_repair_controller.list_repairs(1, 8, status=0, scope=_ticket_scope(user_text))
+    except HTTPException:
+        return _empty_ticket("报修", "当前范围没有报修单")
+    except Exception:
+        return _ticket_unavailable("报修")
+    lines: list[str] = []
+    cards: list[dict[str, Any]] = []
+    for index, row in enumerate(items, start=1):
+        asset = await Asset.filter(id=row.asset_id).first()
+        asset_no = str(asset.asset_no) if asset else ""
+        status_label = _REPAIR_STATUS.get(int(row.status or 0), "未知")
+        reason = str(row.reason or "")[:20]
+        alias = f"R{index}"
+        lines.append(f"{alias} {asset_no} {status_label} {reason}".strip())
+        cards.append({"alias": alias, "kind": "repair", "asset_no": asset_no, "status_label": status_label})
+    if not lines:
+        return _empty_ticket("报修", "当前范围没有报修单")
+    return {"blocks": [{"title": "报修", "lines": lines}], "cards": cards, "row_count": len(lines)}
+
+
+async def tool_list_transfers(*, user_text, **_kwargs) -> dict[str, Any]:
+    from fastapi.exceptions import HTTPException
+
+    from app.controllers.asset_transfer import asset_transfer_controller
+    from app.models.business import Asset, Employee
+
+    try:
+        _total, items = await asset_transfer_controller.list_transfers(1, 8, status=0, scope=_ticket_scope(user_text))
+    except HTTPException:
+        return _empty_ticket("调拨", "当前范围没有调拨单")
+    except Exception:
+        return _ticket_unavailable("调拨")
+    lines: list[str] = []
+    cards: list[dict[str, Any]] = []
+    for index, row in enumerate(items, start=1):
+        asset = await Asset.filter(id=row.asset_id).first()
+        from_emp = await Employee.filter(id=row.from_employee_id).first()
+        to_emp = await Employee.filter(id=row.to_employee_id).first()
+        asset_no = str(asset.asset_no) if asset else ""
+        status_label = _TRANSFER_STATUS.get(int(row.status or 0), "未知")
+        from_name = from_emp.name if from_emp else ""
+        to_name = to_emp.name if to_emp else ""
+        alias = f"T{index}"
+        lines.append(f"{alias} {asset_no} {status_label} {from_name}→{to_name}")
+        cards.append({"alias": alias, "kind": "transfer", "asset_no": asset_no, "status_label": status_label})
+    if not lines:
+        return _empty_ticket("调拨", "当前范围没有调拨单")
+    return {"blocks": [{"title": "调拨", "lines": lines}], "cards": cards, "row_count": len(lines)}
+
+
+async def tool_list_inventory(**_kwargs) -> dict[str, Any]:
+    from fastapi.exceptions import HTTPException
+
+    from app.controllers.inventory import inventory_controller
+
+    try:
+        _total, items = await inventory_controller.list_sessions(1, 3, status=1)
+        if not items:
+            _total, items = await inventory_controller.list_sessions(1, 3, status=0)
+    except HTTPException:
+        return _empty_ticket("盘点", "当前范围没有盘点任务")
+    except Exception:
+        return _ticket_unavailable("盘点")
+    lines: list[str] = []
+    cards: list[dict[str, Any]] = []
+    for index, session in enumerate(items[:3], start=1):
+        try:
+            data = await inventory_controller.get(session.id)
+        except HTTPException:
+            continue
+        except Exception:
+            continue
+        summary = data.get("summary") or {}
+        title = str(data.get("title") or getattr(session, "title", "") or "")
+        status_label = _INVENTORY_STATUS.get(int(data.get("status") or getattr(session, "status", 0) or 0), "未知")
+        total_n = int(summary.get("total") or 0)
+        pending = int(summary.get("pending") or 0)
+        found = int(summary.get("found") or 0)
+        missing = int(summary.get("missing") or 0)
+        mismatch = int(summary.get("mismatch") or 0)
+        lines.append(
+            f"盘点《{title}》 {status_label} 共{total_n} 未盘{pending} 相符{found} 盘亏{missing} 不符{mismatch}"
+        )
+        cards.append({"alias": f"I{index}", "kind": "inventory", "name": title, "status_label": status_label})
+    if not lines:
+        return _empty_ticket("盘点", "当前范围没有盘点任务")
+    return {"blocks": [{"title": "盘点", "lines": lines}], "cards": cards, "row_count": len(lines)}
+
+
 TOOLS = {
     "page_help": tool_page_help,
     "list_assets": tool_list_assets,
@@ -337,4 +509,7 @@ TOOLS = {
     "suggest_filter": tool_suggest_filter,
     "lookup_employees": tool_lookup_employees,
     "search_kb": tool_search_kb,
+    "list_repairs": tool_list_repairs,
+    "list_transfers": tool_list_transfers,
+    "list_inventory": tool_list_inventory,
 }

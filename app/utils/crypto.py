@@ -52,3 +52,35 @@ def mask_key(api_key: str) -> str:
     if len(api_key) <= 12:
         return api_key[:3] + "***"
     return api_key[:6] + "***" + api_key[-4:]
+
+
+# ---------------------------------------------------------------------------
+# TOTP 密钥读写封装（加密 A 档 · 2026-09-11）
+#
+# 背景：user.totp_secret 原先以 Base32 明文落库。改为「写即加密、读即解密」后，
+# 存量明文行仍能被正确读出（不带前缀 → 原样返回），因此新代码上线与数据迁移
+# 可以分两步走：先发代码（兼容明文），再跑一次性迁移把明文刷成密文。
+# ---------------------------------------------------------------------------
+
+
+def get_totp_secret(user) -> str:
+    """读取用户的 TOTP 密钥。
+
+    - 库值带 `enc:v1:` 前缀 → 解密后返回
+    - 库值是历史明文 Base32 → 原样返回（兼容存量）
+    - 空 / 解密失败 → 返回空串
+    """
+    raw = getattr(user, "totp_secret", None)
+    if not raw:
+        return ""
+    if raw.startswith(PREFIX):
+        return decrypt_secret(raw)
+    return raw
+
+
+def set_totp_secret(user, value: str | None) -> None:
+    """写入用户的 TOTP 密钥，统一加密落库；None / 空串直接置空（解绑场景）。"""
+    if not value:
+        user.totp_secret = None
+        return
+    user.totp_secret = encrypt_secret(value)

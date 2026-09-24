@@ -1,4 +1,5 @@
 from tortoise import fields
+from tortoise.validators import MaxLengthValidator
 
 from app.schemas.menus import MenuType
 
@@ -18,6 +19,10 @@ class User(BaseModel, TimestampMixin):
     is_superuser = fields.BooleanField(default=False, description="是否为超级管理员", index=True)
     last_login = fields.DatetimeField(null=True, description="最后登录时间", index=True)
     # 零成本 2FA：TOTP 密钥（Base32）与启用标记；仅本人/绑定流程读写
+    # 加密 A 档（2026-09-11）：实际落库为 enc:v1: 密文（约 87 字符）。
+    # 这里刻意不把 max_length 从 64 调到 255 —— SQLite 不强制 VARCHAR 长度，
+    # 而改列宽/描述会让启动时自动跑的 aerich migrate 抛异常拖垮启动（SQLite 不支持 ALTER 列）。
+    # 读写一律走 app.utils.crypto 的 get_totp_secret / set_totp_secret。
     totp_secret = fields.CharField(max_length=64, null=True, description="TOTP密钥Base32")
     totp_enabled = fields.BooleanField(default=False, description="是否启用TOTP二次验证", index=True)
     recovery_question = fields.CharField(max_length=120, null=True, description="TOTP恢复问题")
@@ -33,6 +38,17 @@ class User(BaseModel, TimestampMixin):
 
     class Meta:
         table = "user"
+
+
+# 加密 A 档（2026-09-11）：totp_secret 现在落库为 enc:v1: 密文（约 87 字符），超出声明的 64。
+# SQLite 本身不强制 VARCHAR 长度，但 tortoise 会给 CharField 挂 MaxLengthValidator，在 save() 时拒绝 87 字符。
+# 不能直接把 max_length 改成 255 —— 那会让启动时自动跑的 aerich migrate 为 SQLite 生成
+# 不支持的 ALTER COLUMN，异常不在 init_app.init_db 的豁免名单里，会把服务拖垮（2026-08-19 曾发生过类似 502）。
+# 因此保持声明不变，仅在模型加载后摘掉这一个字段的长度校验器；读写一律走
+# app.utils.crypto 的 get_totp_secret / set_totp_secret。
+_totp_field = User._meta.fields_map["totp_secret"]
+_totp_field.validators = [v for v in _totp_field.validators if not isinstance(v, MaxLengthValidator)]
+assert not any(isinstance(v, MaxLengthValidator) for v in _totp_field.validators)
 
 
 class VerificationPolicy(BaseModel, TimestampMixin):

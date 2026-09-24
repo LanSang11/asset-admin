@@ -315,7 +315,7 @@ async function getTreeSelect() {
             trigger: ['input', 'blur'],
           }"
         >
-          <NInput v-model:value="modalForm.name" placeholder="请输入唯一菜单名称" />
+          <NInput v-model:value="modalForm.name" maxlength="20" placeholder="请输入唯一菜单名称（最多 20 个字符）" />
         </NFormItem>
         <NFormItem
           label="访问路径"
@@ -326,17 +326,19 @@ async function getTreeSelect() {
             trigger: ['blur'],
           }"
         >
-          <NInput v-model:value="modalForm.path" placeholder="请输入访问路径" />
+          <NInput v-model:value="modalForm.path" maxlength="100" placeholder="请输入访问路径" />
         </NFormItem>
         <NFormItem v-if="modalForm.menu_type === 'menu'" label="组件路径" path="component">
           <NInput
             v-model:value="modalForm.component"
+            maxlength="100"
             placeholder="请输入组件路径，例如：/system/user"
           />
         </NFormItem>
         <NFormItem label="跳转路径" path="redirect">
           <NInput
             v-model:value="modalForm.redirect"
+            maxlength="100"
             :disabled="modalForm.parent_id !== 0"
             :placeholder="
               modalForm.parent_id !== 0 ? '只有一级菜单可以设置跳转路径' : '请输入跳转路径'

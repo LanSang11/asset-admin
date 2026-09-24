@@ -54,7 +54,8 @@ class DeptController(CRUDBase[Dept, DeptCreate, DeptUpdate]):
 
     @atomic()
     async def create_dept(self, obj_in: DeptCreate):
-        # 创建
+        if await Dept.filter(name=obj_in.name).exists():
+            raise HTTPException(status_code=400, detail="部门名称已存在，请使用其他名称")
         if obj_in.parent_id != 0:
             parent = await Dept.filter(id=obj_in.parent_id, is_deleted=False).first()
             if not parent:
@@ -65,6 +66,8 @@ class DeptController(CRUDBase[Dept, DeptCreate, DeptUpdate]):
     @atomic()
     async def update_dept(self, obj_in: DeptUpdate):
         dept_obj = await self.get(id=obj_in.id)
+        if await Dept.filter(name=obj_in.name).exclude(id=obj_in.id).exists():
+            raise HTTPException(status_code=400, detail="部门名称已存在，请使用其他名称")
         data = obj_in.model_dump(exclude_unset=True)
         new_parent_id = data.get("parent_id", dept_obj.parent_id)
 

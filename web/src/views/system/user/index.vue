@@ -30,6 +30,8 @@ import { useCRUD, withStepUp } from '@/composables'
 import api from '@/api'
 import TheIcon from '@/components/icon/TheIcon.vue'
 import { useUserStore } from '@/store'
+import { isStrongPassword, PASSWORD_RULE_TEXT } from '@/utils/form-validation'
+import { shouldShowLocalError } from '@/utils/http/validation-errors'
 
 defineOptions({ name: '用户管理' })
 
@@ -37,6 +39,7 @@ const $table = ref(null)
 const queryItems = ref({})
 const vPermission = resolveDirective('permission')
 const dialog = useDialog()
+const userStore = useUserStore()
 
 const {
   modalVisible,
@@ -219,7 +222,7 @@ const columns = [
                 $message.success('动态验证器已重置，该用户旧会话已失效，下次登录需重新绑定')
                 await $table.value?.handleSearch()
               } catch (error) {
-                if (error?.message) $message.error('重置动态验证器失败: ' + error.message)
+                if (error?.message && shouldShowLocalError(error)) $message.error('重置动态验证器失败: ' + error.message)
               }
             },
             onNegativeClick: () => {},
@@ -266,7 +269,7 @@ const columns = [
                 });
                 await $table.value?.handleSearch();
               } catch (error) {
-                $message.error('重置密码失败: ' + error.message);
+                if (shouldShowLocalError(error)) $message.error('重置密码失败: ' + error.message);
               }
             },
             onNegativeClick: () => {},
@@ -291,6 +294,48 @@ const columns = [
             default: () => h('div', {}, '确定重置该用户密码为随机强密码吗？（重置后弹窗展示一次性密码）'),
           }
         ),
+        userStore.userId !== row.id &&
+          withDirectives(
+            h(
+              NPopconfirm,
+              {
+                onPositiveClick: async () => {
+                  try {
+                    await withStepUp('user_update_security', (headers) =>
+                      api.forceLogout({ user_id: row.id }, headers)
+                    )
+                    $message.success('已强制下线，该用户需重新登录并完成滑块')
+                  } catch (error) {
+                    if (error?.message && shouldShowLocalError(error)) $message.error('强制下线失败: ' + error.message)
+                  }
+                },
+                onNegativeClick: () => {},
+              },
+              {
+                trigger: () =>
+                  h(
+                    NButton,
+                    {
+                      size: 'small',
+                      type: 'error',
+                      secondary: true,
+                      style: 'margin-right: 8px;',
+                    },
+                    {
+                      default: () => '强制下线',
+                      icon: renderIcon('material-symbols:logout', { size: 16 }),
+                    }
+                  ),
+                default: () =>
+                  h(
+                    'div',
+                    {},
+                    '确定强制下线该用户吗？其已登录会话将立即失效，需重新登录并完成滑块。'
+                  ),
+              }
+            ),
+            [[vPermission, 'post/api/v1/user/force_logout']]
+          ),
       ]
     },
   },
@@ -350,6 +395,11 @@ const validateAddUser = {
       message: '请输入名称',
       trigger: ['input', 'blur'],
     },
+    {
+      max: 20,
+      message: '用户名称最多输入 20 个字符',
+      trigger: ['input', 'blur'],
+    },
   ],
   email: [
     {
@@ -374,6 +424,11 @@ const validateAddUser = {
       required: true,
       message: '请输入密码',
       trigger: ['input', 'blur', 'change'],
+    },
+    {
+      trigger: ['input', 'blur'],
+      validator: (rule, value) => isStrongPassword(value),
+      message: PASSWORD_RULE_TEXT,
     },
   ],
   confirmPassword: [
@@ -477,7 +532,7 @@ const validateAddUser = {
             :rules="validateAddUser"
           >
             <NFormItem label="用户名称" path="username">
-              <NInput v-model:value="modalForm.username" clearable placeholder="请输入用户名称" />
+              <NInput v-model:value="modalForm.username" clearable maxlength="20" placeholder="请输入用户名称（2~20 个字符）" />
             </NFormItem>
             <NFormItem label="邮箱" path="email">
               <NInput v-model:value="modalForm.email" clearable placeholder="请输入邮箱" />
@@ -488,8 +543,10 @@ const validateAddUser = {
                 show-password-on="mousedown"
                 type="password"
                 clearable
-                placeholder="请输入密码"
+                maxlength="32"
+                :placeholder="PASSWORD_RULE_TEXT"
               />
+              <div class="mt-1 text-xs text-gray-500">{{ PASSWORD_RULE_TEXT }}</div>
             </NFormItem>
             <NFormItem v-if="modalAction === 'add'" label="确认密码" path="confirmPassword">
               <NInput
@@ -497,6 +554,7 @@ const validateAddUser = {
                 show-password-on="mousedown"
                 type="password"
                 clearable
+                maxlength="32"
                 placeholder="请确认密码"
               />
             </NFormItem>

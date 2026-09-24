@@ -8,6 +8,7 @@ import AuthenticatorDownloadLinks from '@/components/security/AuthenticatorDownl
 import { useUserStore } from '@/store'
 import api from '@/api'
 import { is, removeToken } from '@/utils'
+import { isStrongPassword, PASSWORD_RULE_TEXT } from '@/utils/form-validation'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -52,6 +53,11 @@ const infoFormRules = {
       required: true,
       message: t('views.profile.message_username_required'),
       trigger: ['input', 'blur', 'change'],
+    },
+    {
+      max: 20,
+      message: '用户名称最多输入 20 个字符',
+      trigger: ['input', 'blur'],
     },
   ],
 }
@@ -111,6 +117,11 @@ const passwordFormRules = {
       required: true,
       message: t('views.profile.message_new_password_required'),
       trigger: ['input', 'blur', 'change'],
+    },
+    {
+      validator: (rule, value) => isStrongPassword(value),
+      message: PASSWORD_RULE_TEXT,
+      trigger: ['input', 'blur'],
     },
   ],
   confirm_password: [
@@ -313,6 +324,7 @@ onMounted(() => {
               <NInput
                 v-model:value="infoForm.username"
                 type="text"
+                maxlength="20"
                 :placeholder="$t('views.profile.placeholder_username')"
               />
             </NFormItem>
@@ -353,8 +365,10 @@ onMounted(() => {
               :disabled="!passwordForm.old_password"
               type="password"
               show-password-on="mousedown"
-              :placeholder="$t('views.profile.placeholder_new_password')"
+              :placeholder="PASSWORD_RULE_TEXT"
+              maxlength="32"
             />
+            <div class="mt-1 text-xs text-gray-500">{{ PASSWORD_RULE_TEXT }}</div>
           </NFormItem>
           <NFormItem :label="$t('views.profile.label_confirm_password')" path="confirm_password">
             <NInput
@@ -363,6 +377,7 @@ onMounted(() => {
               type="password"
               show-password-on="mousedown"
               :placeholder="$t('views.profile.placeholder_confirm_password')"
+              maxlength="32"
             />
           </NFormItem>
           <NButton type="primary" :loading="isLoading" @click="updatePassword">

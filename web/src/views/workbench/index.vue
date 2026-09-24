@@ -381,6 +381,9 @@ onMounted(async () => {
   max-width: 100%;
   overflow-x: auto;
 }
+.table-scroll :deep(.n-table) {
+  min-width: 560px;
+}
 .empty-cell,
 .panel-empty {
   padding: 28px !important;

@@ -30,7 +30,7 @@ class BaseUser(BaseModel):
 class UserCreate(BaseModel):
     # 示例禁止使用 admin/弱口令等演示 DNA（信息暴露门禁）
     email: EmailStr = Field(example="user01@example.com")
-    username: str = Field(example="user01", min_length=2, max_length=32)
+    username: str = Field(example="user01", min_length=2, max_length=20)
     password: str = Field(
         example="********",
         min_length=8,
@@ -54,7 +54,7 @@ class UserCreate(BaseModel):
 class UserUpdate(BaseModel):
     id: int
     email: EmailStr
-    username: str
+    username: str = Field(min_length=2, max_length=20)
     is_active: Optional[bool] = None
     is_superuser: Optional[bool] = None
     role_ids: Optional[List[int]] = None

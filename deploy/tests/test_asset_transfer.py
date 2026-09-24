@@ -32,7 +32,7 @@ class TestAssetTransfer(unittest.IsolatedAsyncioTestCase):
 
         self.dept = await Dept.create(name="研发部")
         self.manager_user = await User.create(
-            username="xfermgr", email="m@t.com", password="x", is_superuser=False, is_active=True
+            username="demomgr", email="m@t.com", password="x", is_superuser=False, is_active=True
         )
         self.emp_user = await User.create(
             username="emp1", email="e@t.com", password="x", is_superuser=False, is_active=True

@@ -55,6 +55,8 @@ async def update_role(role_in: RoleUpdate):
     # 保护内置角色："管理员"不允许改名（防角色名判断被绕过导致提权链）
     if role_obj.name == "管理员" and role_in.name != "管理员":
         raise HTTPException(status_code=403, detail="内置角色「管理员」不允许改名")
+    if await role_controller.model.filter(name=role_in.name).exclude(id=role_in.id).exists():
+        raise HTTPException(status_code=400, detail="系统中已存在同名角色")
     await role_controller.update(id=role_in.id, obj_in=role_in)
     return Success(msg="更新成功")
 

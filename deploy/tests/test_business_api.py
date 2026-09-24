@@ -135,22 +135,122 @@ class TestBusinessCore(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(resolve_employee_order("password", "asc"), "-created_at")
         self.assertEqual(resolve_employee_order("created_at", "sideways"), "-created_at")
 
+    async def test_employee_contact_visibility_contract(self):
+        from app.controllers.employee import employee_controller
+        from app.models.business import Employee
+
+        other = await Employee.create(
+            emp_no="E777",
+            name="联系方式样本",
+            dept_id=self.dept.id,
+            phone="13800138000",
+            email="other@example.com",
+            status=True,
+        )
+        admin_view = await employee_controller.serialize_for_viewer(other, "admin", None)
+        manager_view = await employee_controller.serialize_for_viewer(other, "manager", self.manager)
+        other_employee_view = await employee_controller.serialize_for_viewer(other, "employee", self.emp)
+        self_view = await employee_controller.serialize_for_viewer(other, "employee", other)
+
+        self.assertEqual(
+            (admin_view["phone"], admin_view["email"]),
+            ("13800138000", "other@example.com"),
+        )
+        self.assertEqual(
+            (manager_view["phone"], manager_view["email"]),
+            ("13800138000", "other@example.com"),
+        )
+        self.assertEqual((other_employee_view["phone"], other_employee_view["email"]), ("", ""))
+        self.assertIsNone(other_employee_view["user_id"])
+        self.assertEqual(
+            (self_view["phone"], self_view["email"]),
+            ("13800138000", "other@example.com"),
+        )
+
     async def test_employee_export_uses_filters_sort_and_csv_guards(self):
+        import csv
+        import io
+        from datetime import datetime, timedelta, timezone
+
         from app.models.business import Employee
         from app.services.export_service import export_employees
 
         await Employee.create(emp_no="E900", name="=风险姓名", dept_id=self.dept.id, status=False)
         await Employee.create(emp_no="E800", name="正常员工", dept_id=self.dept.id, status=True)
-        response = await export_employees(
-            keyword="风险", dept_id=self.dept.id, status=0, sort_by="emp_no", sort_order="asc"
+        fixed_at = datetime(2026, 8, 24, 9, 30, 0, tzinfo=timezone(timedelta(hours=8)))
+        result = await export_employees(
+            keyword="风险",
+            dept_id=self.dept.id,
+            status=0,
+            sort_by="emp_no",
+            sort_order="asc",
+            exported_by="admin1",
+            exported_at=fixed_at,
         )
         chunks = []
-        async for chunk in response.body_iterator:
+        async for chunk in result.response.body_iterator:
             chunks.append(chunk if isinstance(chunk, bytes) else chunk.encode("utf-8"))
         content = b"".join(chunks).decode("utf-8-sig")
+        records = list(csv.reader(io.StringIO(content)))
+        self.assertEqual(result.row_count, 1)
+        self.assertEqual(
+            records[0],
+            [
+                "# 导出信息",
+                "导出人：admin1",
+                "导出时间：2026-08-24 09:30:00 Asia/Shanghai",
+                "数据行数：1",
+            ],
+        )
+        self.assertEqual(records[1][0:3], ["工号", "姓名", "性别"])
         self.assertIn("E900", content)
         self.assertNotIn("E800", content)
         self.assertIn("'=风险姓名", content)
+
+    async def test_employee_export_records_actor_and_row_count_without_pii(self):
+        from starlette.requests import Request
+
+        from app.api.v1.exports.exports import export_employees_csv
+        from app.core.ctx import CTX_USER_ID
+        from app.models.admin import SecurityEvent
+        from app.models.business import Employee
+
+        self.emp.phone = "13800138000"
+        self.emp.email = "employee@example.com"
+        await self.emp.save(update_fields=["phone", "email"])
+        expected_rows = await Employee.filter(dept_id=self.dept.id).count()
+        CTX_USER_ID.set(self.admin_user.id)
+        request = Request(
+            {
+                "type": "http",
+                "method": "GET",
+                "path": "/api/v1/export/employees",
+                "query_string": b"",
+                "headers": [(b"user-agent", b"pii-1-test")],
+                "client": ("127.0.0.1", 12345),
+                "server": ("testserver", 80),
+                "scheme": "http",
+            }
+        )
+        response = await export_employees_csv(
+            request=request,
+            keyword="",
+            dept_id=self.dept.id,
+            status=-1,
+            sort_by="emp_no",
+            sort_order="asc",
+            current_user=self.admin_user,
+        )
+        self.assertEqual(response.status_code, 200)
+        event = await SecurityEvent.filter(event_type="employee_export").order_by("-id").first()
+        self.assertIsNotNone(event)
+        self.assertEqual(
+            (event.user_id, event.username),
+            (self.admin_user.id, self.admin_user.username),
+        )
+        self.assertEqual(event.detail, f"导出员工数据 rows={expected_rows}")
+        self.assertNotIn("13800138000", event.detail)
+        self.assertNotIn("employee@example.com", event.detail)
 
     # ---------- 资产 ----------
     async def test_asset_create_and_validation(self):
@@ -190,6 +290,36 @@ class TestBusinessCore(unittest.IsolatedAsyncioTestCase):
         # 闲置资产可删除
         idle = await asset_controller.create_asset(AssetCreate(asset_no="AST011", name="闲置资产", status=2))
         await asset_controller.delete_asset(idle.id)
+
+    async def test_scan_exact_asset_lookup_and_action_context(self):
+        import json
+
+        from app.api.v1.assets.assets import get_asset, my_assets
+        from app.core.ctx import CTX_USER_ID
+        from app.models.business import Asset
+
+        exact = await Asset.create(
+            asset_no="A%B", name="扫码精确资产", status=1, owner_emp_id=self.emp.id
+        )
+        for i in range(25):
+            await Asset.create(asset_no=f"NO-{i:02d}", name=f"包含 A%B 的模糊结果 {i}", status=2)
+
+        CTX_USER_ID.set(self.emp_user.id)
+        response = await get_asset(id=None, asset_no="A%B")
+        payload = json.loads(response.body)
+        self.assertEqual(payload["data"]["id"], exact.id)
+        self.assertEqual(payload["data"]["asset_no"], "A%B")
+
+        context_response = await my_assets(context=True)
+        context = json.loads(context_response.body)["data"]
+        self.assertTrue(context["has_active_employee"])
+        self.assertIn(exact.id, context["own_asset_ids"])
+
+        CTX_USER_ID.set(self.admin_user.id)
+        admin_context_response = await my_assets(context=True)
+        admin_context = json.loads(admin_context_response.body)["data"]
+        self.assertFalse(admin_context["has_active_employee"])
+        self.assertEqual(admin_context["own_asset_ids"], [])
 
     # ---------- 领用/归还审批状态机 ----------
     async def _apply_and_approve_take(self):
@@ -378,6 +508,25 @@ class TestBusinessCore(unittest.IsolatedAsyncioTestCase):
         # 解封
         self.assertTrue(gw2.remove_blacklist("ip:9.9.9.9"))
         self.assertNotIn("ip:9.9.9.9", gw2.list_blacklist())
+
+        # 已登录：出口 IP 被匿名探测拉黑后，不得连坐该账号
+        gw3 = isolated_gateway("binding.json")
+        gw3.add_to_blacklist("ip:8.8.8.8", reason="anon overflow", source="auto")
+        self.assertTrue(gw3._is_request_blocked("8.8.8.8", uid=None))
+        self.assertFalse(gw3._is_request_blocked("8.8.8.8", uid="1"))
+        gw3.add_to_blacklist("uid:1", reason="manual", source="manual")
+        self.assertTrue(gw3._is_request_blocked("8.8.8.8", uid="1"))
+        self.assertFalse(gw3._is_request_blocked("203.0.113.89", uid=None))
+
+        # 文档网段不得写入黑名单；登录成功只清 auto IP，不动 manual
+        gw4 = isolated_gateway("cleanup.json")
+        gw4.add_to_blacklist("ip:203.0.113.89", reason="spoof", source="auto")
+        self.assertNotIn("ip:203.0.113.89", gw4.list_blacklist())
+        gw4.add_to_blacklist("ip:8.8.4.4", reason="anon overflow", source="auto")
+        gw4.add_to_blacklist("ip:9.9.9.8", reason="admin", source="manual")
+        self.assertTrue(gw4.clear_auto_ip_ban("8.8.4.4"))
+        self.assertNotIn("ip:8.8.4.4", gw4.list_blacklist())
+        self.assertIn("ip:9.9.9.8", gw4.list_blacklist())
 
 
 if __name__ == "__main__":

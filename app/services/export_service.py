@@ -4,7 +4,10 @@ CSV 用标准库实现（零依赖、跨平台）。后续如需 .xlsx 可加 op
 """
 import csv
 import io
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import List
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi.responses import StreamingResponse
 
@@ -17,6 +20,27 @@ _FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 # 导出行数上限（防全量导出内存/响应失控）
 EXPORT_MAX_ROWS = 10000
 
+try:
+    _SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
+except ZoneInfoNotFoundError:
+    # Windows 的 Python 可能没有系统 IANA 时区库；上海现行时区固定为 UTC+8。
+    _SHANGHAI_TZ = timezone(timedelta(hours=8), name="Asia/Shanghai")
+
+
+@dataclass(frozen=True)
+class EmployeeExportResult:
+    response: StreamingResponse
+    row_count: int
+    exported_at: datetime
+
+
+def _export_time(value: datetime | None = None) -> datetime:
+    if value is None:
+        return datetime.now(_SHANGHAI_TZ)
+    if value.tzinfo is None:
+        return value.replace(tzinfo=_SHANGHAI_TZ)
+    return value.astimezone(_SHANGHAI_TZ)
+
 
 def _sanitize_cell(value) -> str:
     """防止 CSV 公式注入（OWASP 建议：公式前缀前加单引号）"""
@@ -26,10 +50,17 @@ def _sanitize_cell(value) -> str:
     return s
 
 
-def _csv_response(filename: str, headers: List[str], rows: List[list]) -> StreamingResponse:
+def _csv_response(
+    filename: str,
+    headers: List[str],
+    rows: List[list],
+    prelude_rows: List[list] | None = None,
+) -> StreamingResponse:
     """生成带 UTF-8 BOM 的 CSV 流式响应（Excel 兼容）"""
     buf = io.StringIO()
     writer = csv.writer(buf)
+    for row in prelude_rows or []:
+        writer.writerow([_sanitize_cell(c) for c in row])
     writer.writerow(headers)
     for row in rows:
         writer.writerow([_sanitize_cell(c) for c in row])
@@ -49,7 +80,10 @@ async def export_employees(
     status: int = -1,
     sort_by: str = "created_at",
     sort_order: str = "desc",
-) -> StreamingResponse:
+    *,
+    exported_by: str,
+    exported_at: datetime | None = None,
+) -> EmployeeExportResult:
     # 修复：导出上限保护（原全量查询，数据量大时内存/响应失控）
     emps = (
         await Employee.filter(build_employee_filter(keyword, dept_id, status))
@@ -68,7 +102,15 @@ async def export_employees(
             "是" if e.is_manager else "否",
             "在职" if e.status else "离职",
         ])
-    return _csv_response("employees.csv", headers, rows)
+    actual_at = _export_time(exported_at)
+    prelude = [[
+        "# 导出信息",
+        f"导出人：{exported_by}",
+        f"导出时间：{actual_at:%Y-%m-%d %H:%M:%S} Asia/Shanghai",
+        f"数据行数：{len(rows)}",
+    ]]
+    response = _csv_response("employees.csv", headers, rows, prelude_rows=prelude)
+    return EmployeeExportResult(response=response, row_count=len(rows), exported_at=actual_at)
 
 
 async def export_assets(keyword: str = "", category: str = "", status: int = 0) -> StreamingResponse:

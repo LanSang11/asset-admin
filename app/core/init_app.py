@@ -493,6 +493,29 @@ async def ensure_schema_patches():
             )
             logger.info("schema patch applied: employee_attachments table")
 
+        # 资产/员工关键字段的改前改后记录；电话、邮箱由服务层先行脱敏。
+        await conn.execute_script(
+            """
+            CREATE TABLE IF NOT EXISTS data_field_changes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                entity_type VARCHAR(16) NOT NULL,
+                entity_id INT NOT NULL,
+                field_name VARCHAR(64) NOT NULL,
+                old_value VARCHAR(500) NOT NULL DEFAULT '',
+                new_value VARCHAR(500) NOT NULL DEFAULT '',
+                operator_id INT,
+                operator_name VARCHAR(64) NOT NULL DEFAULT '',
+                created_at TIMESTAMP,
+                updated_at TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_data_field_changes_entity
+                ON data_field_changes(entity_type, entity_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_data_field_changes_created
+                ON data_field_changes(created_at);
+            """
+        )
+        logger.info("schema patch applied: data_field_changes table/indexes")
+
         asset_cols = await _cols("assets")
         if asset_cols:
             if "warranty_until" not in asset_cols:

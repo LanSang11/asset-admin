@@ -1,5 +1,6 @@
 import { getToken } from '@/utils'
 import { resolveResError } from './helpers'
+import { formatValidationMessage } from './validation-errors'
 import { useUserStore } from '@/store'
 
 export function reqResolve(config) {
@@ -30,12 +31,16 @@ export function resResolve(response) {
   if (data?.code !== 200) {
     const code = data?.code ?? status
     /** 根据code处理对应的操作，并返回处理后的message */
-    const message = resolveResError(code, data?.msg ?? statusText)
+    const message =
+      code === 422
+        ? formatValidationMessage(data, response.config?.url)
+        : resolveResError(code, data?.msg ?? statusText)
     // 登录第二步：密码已通过，不要弹红字「失败」
-    if (!response.config?.silent && !isTotpChallenge(data)) {
+    const notified = !response.config?.silent && !isTotpChallenge(data)
+    if (notified) {
       window.$message?.error(message, { keepAliveOnHover: true })
     }
-    return Promise.reject({ code, message, error: data || response })
+    return Promise.reject({ code, message, notified, error: data || response })
   }
   return Promise.resolve(data)
 }
@@ -49,10 +54,11 @@ export async function resReject(error) {
     const code = error?.code
     /** 根据code处理对应的操作，并返回处理后的message */
     const message = resolveResError(code, error.message)
-    if (!error?.config?.silent) {
+    const notified = !error?.config?.silent
+    if (notified) {
       window.$message?.error(message)
     }
-    return Promise.reject({ code, message, error })
+    return Promise.reject({ code, message, notified, error })
   }
   const { data, status, config } = error.response
 
@@ -73,13 +79,22 @@ export async function resReject(error) {
       return
     }
     // 修复：401 处理完直接返回（原继续走下方弹窗逻辑，重复弹"登录已过期"）
-    return Promise.reject({ code: 401, message: '登录已过期', error: data || error.response })
+    return Promise.reject({
+      code: 401,
+      message: '登录已过期',
+      notified: true,
+      error: data || error.response,
+    })
   }
   // 后端返回的response数据
   const code = data?.code ?? status
-  const message = resolveResError(code, data?.msg ?? error.message)
-  if (!config?.silent && !isTotpChallenge(data)) {
+  const message =
+    code === 422
+      ? formatValidationMessage(data, config?.url)
+      : resolveResError(code, data?.msg ?? error.message)
+  const notified = !config?.silent && !isTotpChallenge(data)
+  if (notified) {
     window.$message?.error(message, { keepAliveOnHover: true })
   }
-  return Promise.reject({ code, message, error: error.response?.data || error.response })
+  return Promise.reject({ code, message, notified, error: error.response?.data || error.response })
 }

@@ -4,6 +4,7 @@ import { NButton, NUpload } from 'naive-ui'
 import CommonPage from '@/components/page/CommonPage.vue'
 import api from '@/api'
 import { downloadFile } from '@/utils/download'
+import { shouldShowLocalError } from '@/utils/http/validation-errors'
 
 defineOptions({ name: '我的附件' })
 
@@ -34,7 +35,7 @@ async function onUpload({ file, onFinish, onError }) {
     await load()
     onFinish && onFinish()
   } catch (e) {
-    $message.error(e?.message || e?.msg || '上传失败')
+    if (shouldShowLocalError(e)) $message.error(e?.message || e?.msg || '上传失败')
     onError && onError()
   }
 }

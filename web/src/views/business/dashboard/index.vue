@@ -8,6 +8,7 @@ import DashboardPanel from '@/components/dashboard/DashboardPanel.vue'
 import TrendBars from '@/components/dashboard/TrendBars.vue'
 import SecurityPostureSection from '@/components/dashboard/SecurityPostureSection.vue'
 import api from '@/api'
+import { shouldShowLocalError } from '@/utils/http/validation-errors'
 import {
   buildDashboardMetrics,
   buildSecurityDrillQuery,
@@ -44,8 +45,8 @@ async function load() {
   try {
     const response = await api.getDashboardStats()
     stats.value = normalizeDashboardStats(response?.data)
-  } catch (_) {
-    window.$message?.error('看板数据加载失败，请稍后重试')
+  } catch (error) {
+    if (shouldShowLocalError(error)) window.$message?.error('看板数据加载失败，请稍后重试')
   } finally {
     loading.value = false
   }

@@ -9,6 +9,7 @@ import CrudTable from '@/components/table/CrudTable.vue'
 import { useUserStore } from '@/store'
 import api from '@/api'
 import { downloadFile } from '@/utils/download'
+import { shouldShowLocalError } from '@/utils/http/validation-errors'
 
 defineOptions({ name: '领用归还' })
 
@@ -71,7 +72,7 @@ async function submitApply() {
     applyVisible.value = false
     $table.value?.handleSearch()
   } catch (error) {
-    $message.error(error?.msg || error?.message || '申请提交失败')
+    if (shouldShowLocalError(error)) $message.error(error?.msg || error?.message || '申请提交失败')
   } finally {
     applyLoading.value = false
   }

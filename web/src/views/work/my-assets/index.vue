@@ -5,13 +5,18 @@
       :columns="columns"
       :get-data="loadData"
       :query-items="{}"
-      :scroll-x="900"
+      :scroll-x="920"
       :remote="false"
     />
-    <NModal v-model:show="repairVisible" preset="card" title="报修" style="width: 400px">
+    <NModal
+      v-model:show="repairVisible"
+      preset="card"
+      title="报修"
+      style="width: min(400px, calc(100vw - 24px))"
+    >
       <NForm>
         <NFormItem label="故障说明">
-          <NInput v-model:value="repairForm.reason" type="textarea" :rows="3" maxlength="255" />
+          <NInput v-model:value="repairForm.reason" type="textarea" :rows="3" maxlength="255" show-count placeholder="请具体说明故障（至少 2 个字符）" />
         </NFormItem>
       </NForm>
       <template #footer>
@@ -19,13 +24,23 @@
         <NButton type="primary" :loading="repairLoading" @click="submitRepair">提交</NButton>
       </template>
     </NModal>
-    <NModal v-model:show="transferVisible" preset="card" title="调拨" style="width: 420px">
+    <NModal
+      v-model:show="transferVisible"
+      preset="card"
+      title="调拨"
+      style="width: min(420px, calc(100vw - 24px))"
+    >
       <NForm>
         <NFormItem label="调入人">
-          <NSelect v-model:value="transferForm.to_employee_id" :options="employeeOptions" filterable placeholder="选择调入员工" />
+          <NSelect
+            v-model:value="transferForm.to_employee_id"
+            :options="employeeOptions"
+            filterable
+            placeholder="选择调入员工"
+          />
         </NFormItem>
         <NFormItem label="说明">
-          <NInput v-model:value="transferForm.reason" type="textarea" :rows="3" maxlength="255" />
+          <NInput v-model:value="transferForm.reason" type="textarea" :rows="3" maxlength="255" show-count placeholder="请说明调拨原因（至少 2 个字符）" />
         </NFormItem>
       </NForm>
       <template #footer>
@@ -44,11 +59,14 @@ import { NButton, NForm, NFormItem, NInput, NModal, NSelect, NTag } from 'naive-
 import CommonPage from '@/components/page/CommonPage.vue'
 import CrudTable from '@/components/table/CrudTable.vue'
 import AssetQrDialog from '@/components/asset/AssetQrDialog.vue'
+import { usePermissionStore } from '@/store'
 import api from '@/api'
+import { shouldShowLocalError } from '@/utils/http/validation-errors'
 
 defineOptions({ name: 'WorkMyAssets' })
 
 const router = useRouter()
+const permissionStore = usePermissionStore()
 const $table = ref(null)
 const statusMap = { 1: '在用', 2: '闲置', 3: '维修', 4: '报废' }
 const statusType = { 1: 'success', 2: 'info', 3: 'warning', 4: 'error' }
@@ -63,6 +81,11 @@ const transferLoading = ref(false)
 const employeeOptions = ref([])
 const qrVisible = ref(false)
 const qrAsset = ref(null)
+const hasActiveEmployee = ref(false)
+
+function hasApi(path) {
+  return (permissionStore.accessApis || []).includes(path)
+}
 
 function openQr(row) {
   qrAsset.value = row
@@ -70,11 +93,13 @@ function openQr(row) {
 }
 
 function openRepair(row) {
+  if (!hasActiveEmployee.value) return
   repairForm.value = { asset_id: row.id, reason: '' }
   repairVisible.value = true
 }
 
 async function openTransfer(row) {
+  if (!hasActiveEmployee.value) return
   transferForm.value = { asset_id: row.id, to_employee_id: null, reason: '' }
   transferVisible.value = true
   const res = await api.getTransferCandidates()
@@ -85,52 +110,67 @@ async function openTransfer(row) {
 }
 
 async function submitTransfer() {
-  if (!transferForm.value.to_employee_id || !transferForm.value.reason?.trim()) {
+  const reason = transferForm.value.reason?.trim() || ''
+  if (!transferForm.value.to_employee_id || !reason) {
     $message.warning('请选择调入人并填写说明')
+    return
+  }
+  if (reason.length < 2) {
+    $message.warning('调拨说明至少输入 2 个字符')
     return
   }
   if (transferLoading.value) return
   transferLoading.value = true
   try {
-    await api.applyAssetTransfer(transferForm.value)
+    await api.applyAssetTransfer({ ...transferForm.value, reason })
     $message.success('调拨已提交')
     transferVisible.value = false
     router.push('/work/transfer')
   } catch (e) {
-    $message.error(e?.msg || e?.message || '调拨失败')
+    if (shouldShowLocalError(e)) $message.error(e?.msg || e?.message || '调拨失败')
   } finally {
     transferLoading.value = false
   }
 }
 
 async function submitRepair() {
-  if (!repairForm.value.reason?.trim()) {
+  const reason = repairForm.value.reason?.trim() || ''
+  if (!reason) {
     $message.warning('请填写故障说明')
+    return
+  }
+  if (reason.length < 2) {
+    $message.warning('故障说明至少输入 2 个字符')
     return
   }
   if (repairLoading.value) return
   repairLoading.value = true
   try {
-    await api.applyAssetRepair(repairForm.value)
+    await api.applyAssetRepair({ ...repairForm.value, reason })
     $message.success('报修已提交')
     repairVisible.value = false
     router.push('/work/repair')
   } catch (e) {
-    $message.error(e?.msg || e?.message || '报修失败')
+    if (shouldShowLocalError(e)) $message.error(e?.msg || e?.message || '报修失败')
   } finally {
     repairLoading.value = false
   }
 }
 
 const columns = [
-  { title: '资产编号', key: 'asset_no', width: 140 },
+  { title: '资产编号', key: 'asset_no', width: 140, fixed: 'left' },
   { title: '名称', key: 'name', ellipsis: { tooltip: true } },
   { title: '分类', key: 'category', width: 100 },
   {
     title: '状态',
     key: 'status',
     width: 90,
-    render: (row) => h(NTag, { type: statusType[row.status] || 'default', size: 'small' }, () => statusMap[row.status] || row.status),
+    render: (row) =>
+      h(
+        NTag,
+        { type: statusType[row.status] || 'default', size: 'small' },
+        () => statusMap[row.status] || row.status
+      ),
   },
   { title: '存放位置', key: 'location', ellipsis: { tooltip: true } },
   {
@@ -139,7 +179,11 @@ const columns = [
     width: 120,
     render: (row) =>
       row.warranty_label
-        ? h(NTag, { size: 'small', type: warrantyTagType[row.warranty_state] || 'default' }, () => row.warranty_label)
+        ? h(
+            NTag,
+            { size: 'small', type: warrantyTagType[row.warranty_state] || 'default' },
+            () => row.warranty_label
+          )
         : row.warranty_until || '-',
   },
   {
@@ -147,17 +191,37 @@ const columns = [
     key: 'actions',
     width: 210,
     render: (row) => {
-      const buttons = [
-        h(NButton, { size: 'small', onClick: () => openQr(row) }, () => '二维码'),
-      ]
-      if (row.status === 1) {
+      const buttons = [h(NButton, { size: 'small', onClick: () => openQr(row) }, () => '二维码')]
+      if (row.status === 1 && hasActiveEmployee.value && hasApi('post/api/v1/asset-repair/apply')) {
         buttons.push(
-          h(NButton, { size: 'small', type: 'warning', style: 'margin-left:6px', onClick: () => openRepair(row) }, () => '报修'),
           h(
             NButton,
-            { size: 'small', type: 'primary', style: 'margin-left:6px', onClick: () => openTransfer(row) },
-            () => '调拨',
-          ),
+            {
+              size: 'small',
+              type: 'warning',
+              style: 'margin-left:6px',
+              onClick: () => openRepair(row),
+            },
+            () => '报修'
+          )
+        )
+      }
+      if (
+        row.status === 1 &&
+        hasActiveEmployee.value &&
+        hasApi('post/api/v1/asset-transfer/apply')
+      ) {
+        buttons.push(
+          h(
+            NButton,
+            {
+              size: 'small',
+              type: 'primary',
+              style: 'margin-left:6px',
+              onClick: () => openTransfer(row),
+            },
+            () => '调拨'
+          )
         )
       }
       return buttons
@@ -171,7 +235,13 @@ async function loadData() {
   return { data: list, total: list.length }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  try {
+    const contextRes = await api.getAssetActionContext()
+    hasActiveEmployee.value = contextRes.data?.has_active_employee === true
+  } catch (_) {
+    hasActiveEmployee.value = false
+  }
   $table.value?.handleSearch()
 })
 </script>
